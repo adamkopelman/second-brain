@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "outlook": {
+      "command": "${OUTLOOK_MCP_BIN}",
+      "args": [],
+      "env": {}
+    }
+  }
+}
