@@ -9,7 +9,8 @@ downloads. They are unmodified release builds from each project's GitHub release
 | Dataview | `dataview` | 0.5.68 | https://github.com/blacksmithgu/obsidian-dataview | MIT |
 | Claudian | `realclaudian` | 2.2.6 | https://github.com/YishenTu/claudian | see repo |
 | Smart Second Brain | `smart-second-brain` | 2.0.5 | https://github.com/your-papa/obsidian-smart2brain | see repo |
+| QuickAdd | `quickadd` | 2.25.0 | https://github.com/chhoumann/quickadd | MIT |
 
 **Updating:** re-download `manifest.json`, `main.js`, `styles.css` from the plugin's
-`releases/latest/download/` and commit. Only Dataview is required by this vault; Claudian and
-Smart Second Brain are recommended/optional (see `docs/gtd/obsidian-plugins.md`).
+`releases/latest/download/` and commit. Only Dataview and QuickAdd are required by this vault;
+Claudian and Smart Second Brain are recommended/optional (see `docs/gtd/obsidian-plugins.md`).
