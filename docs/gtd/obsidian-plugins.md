@@ -2,10 +2,20 @@
 
 ## Required
 ### Dataview — powers `Dashboard.md`
-1. Settings → Community plugins → turn off Restricted mode (first time).
-2. Browse → "Dataview" → Install → Enable.
-3. Reopen `Dashboard.md`; the query blocks render.
-Without Dataview, use `/gtd-dashboard` (the portable `dashboard.html`) instead — no plugin needed.
+Dataview is **vendored and pre-enabled** in this repo (`.obsidian/plugins/dataview`,
+`.obsidian/community-plugins.json`), and **JavaScript queries are already turned on**
+(`.obsidian/plugins/dataview/data.json`) — the visual `Dashboard.md` needs them.
+1. Open the folder as a vault; accept "Trust author and enable plugins" on first open.
+2. `Dashboard.md` renders as a KPI + card grid; `Home.canvas` is a spatial launchpad.
+If you ever start from a fresh vault without the vendored plugin, install Dataview via
+Settings → Community plugins → Browse → "Dataview", then enable "Enable JavaScript Queries".
+Don't want Dataview at all? Run `/gtd-dashboard` for the portable `dashboard.html`, which needs
+no plugin and opens in any browser.
+
+### The dashboard's styling
+`Dashboard.md` carries `cssclasses: [dashboard]` and is styled by the snippet
+`.obsidian/snippets/dashboard.css` (enabled in `.obsidian/appearance.json`). `Dashboard (lists).md`
+is a plain-Dataview fallback if you prefer tables to cards.
 
 ## Optional
 - **Smart Second Brain** (`obsidian-smart2brain`) — semantic / RAG search + an AI assistant that
