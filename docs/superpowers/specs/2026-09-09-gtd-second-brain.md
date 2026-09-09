@@ -1,34 +1,51 @@
 # GTD Second Brain — Spec
 
-**Status:** Approved (design decisions from 2026-09-09 session)
+**Status:** Approved (design decisions from 2026-09-09 session, revised after review)
 **Owner:** adamkopelman (single user)
 
 ## Problem
 
-The repo `second-brain` is meant to be a working [GTD](https://gettingthingsdone.com/)
-"second brain": a personal system for capturing, clarifying, organizing, reflecting on, and
-engaging with everything the user has to do and know. It should be usable both in **Obsidian**
-(as a vault) and through **Claude Code** (conversationally), with plain-markdown data that
+The repo `second-brain` is a working [GTD](https://gettingthingsdone.com/) "second brain": a
+personal system for capturing, clarifying, organizing, reflecting on, and engaging with everything
+the user has to do and know. It must be usable in **Obsidian** (as a vault) and through **any
+skills+MCP agent harness** — Claude Code, opencode, and others — with plain-markdown data that
 outlives any single tool.
 
 ## Goals
 
 1. A GTD-structured Obsidian vault the user can open and use immediately.
-2. Conversational GTD workflows via Claude Code skills (the five GTD steps).
-3. Zero-friction capture and a fast "what do I do now" answer.
-4. Two dashboards: a live one inside Obsidian, and a shareable HTML snapshot.
-5. A terminal CLI for capture/query without opening Claude or Obsidian.
-6. Clear docs so the user (and future-them) can run the system.
+2. Conversational GTD workflows as **portable skills** (the five GTD steps).
+3. A single **setup skill** that can scaffold or repair the whole vault from nothing.
+4. Zero-friction capture and a fast "what do I do now" answer.
+5. Two dashboards: a live one inside Obsidian, and a portable self-contained HTML snapshot.
+6. Integration with the user's **`outlook-mcp-rs`** MCP server for email/calendar GTD flows.
+7. Clear docs so the user (and future-them) can run the system in any supported harness.
+
+## Cross-harness portability (hard requirement)
+
+- **Skills are the primary interface.** Skills live in `.claude/skills/` — discovered natively by
+  both Claude Code and opencode. No skill may depend on a Claude-Code-only capability to function.
+- **Anything a harness does "by default" must also exist as a skill.** Example: the session-open
+  status brief is the `gtd-status` skill; the Claude Code `SessionStart` hook is only an optional
+  auto-trigger that calls the same logic.
+- **No Claude-only runtime in core flows.** The portable dashboard is a static `dashboard.html`
+  produced by a stdlib script — not a Claude Artifact. (Publishing an Artifact is an optional
+  Claude-Code-only enhancement, never the only path.)
+- **MCP configured for each harness:** `.mcp.json` (Claude Code) and `opencode.json` (opencode).
+- **`AGENTS.md`** at the repo root gives harness-neutral operating instructions.
 
 ## Non-goals (v1)
 
 - Multi-user / shared-team features.
-- Two-way sync with external task managers (Todoist, Notion) — deferred.
-- Mobile-specific tooling beyond what Obsidian mobile already provides.
+- Two-way sync with non-Outlook task managers (Todoist, Notion).
+- A standalone CLI (dropped — skills cover terminal-free operation portably).
+- Making the Outlook MCP work on non-Windows / without classic Outlook (it degrades gracefully).
 
 ## Decisions (locked)
 
-- **Vault = repo root.** Built fresh.
+- **Vault = repo root.** Built fresh; the committed vault is the output of running `gtd-setup`.
+- **Shipping model = hybrid:** repo ships pre-scaffolded AND `gtd-setup` idempotently creates
+  anything missing (canonical source of the scaffold; never overwrites existing files).
 - **Structure:** PARA-style folders `00 Inbox`, `10 Projects`, `20 Areas`, `30 Resources`,
   `40 Archive`, plus dedicated `Journal`, `People`, `Meetings`, `_templates`.
 - **GTD state in metadata, not folders.** Tasks are markdown checkboxes with:
@@ -37,20 +54,25 @@ outlives any single tool.
   - Inline fields: `[due:: YYYY-MM-DD]`, `[scheduled:: YYYY-MM-DD]`, `[since:: YYYY-MM-DD]`
   - Project link: `[[Project Name]]`
 - **Project frontmatter:** `type: project`, `status: active|someday|done`, `area`, `created`, `review`.
-- **Dashboards:** live `Dashboard.md` via the **Dataview** plugin; plus `/gtd-dashboard` publishes
-  an HTML **Artifact** snapshot (no plugin needed).
-- **Skills:** live in `.claude/skills/`, prefixed `gtd-`, alongside the already-installed
-  Superpowers library.
-- **SessionStart hook:** read-only bash brief on session open.
-- **CLI:** Python 3, standard-library only, `pytest` tests; operates on the vault markdown.
-- **External plugins:** Dataview required; Tasks, Calendar, Templater documented as optional.
+- **Skills (all in `.claude/skills/`, prefixed `gtd-`):** `gtd-setup`, `gtd-capture`,
+  `gtd-process-inbox`, `gtd-next-actions`, `gtd-weekly-review`, `gtd-status`, `gtd-dashboard`,
+  `gtd-outlook`. Alongside the already-installed Superpowers library (untouched).
+- **Dashboards:** live `Dashboard.md` via the Dataview plugin; portable `dashboard.html` via
+  `scripts/build_dashboard.py`.
+- **Outlook:** `outlook-mcp-rs` (Windows, stdio local mode, no auth, 26 tools) wired via env-var
+  binary path in both harness MCP configs; `gtd-outlook` skill drives email→inbox and
+  calendar→review flows.
+- **SessionStart hook:** optional Claude-Code-only auto-trigger for `gtd-status`; read-only.
 
 ## Acceptance criteria
 
+- Running `gtd-setup` in an empty directory produces a complete, openable vault; running it again
+  changes nothing (idempotent).
 - Opening the repo as an Obsidian vault shows populated folders, working templates, and a
   `Dashboard.md` that renders once Dataview is installed.
-- Running Claude Code in the repo triggers the SessionStart brief.
-- Each of `/gtd-capture`, `/gtd-process-inbox`, `/gtd-next-actions`, `/gtd-weekly-review`,
-  `/gtd-dashboard` works end to end against the conventions.
-- `brain capture`, `brain next`, `brain inbox`, `brain review` run from the terminal and pass tests.
-- README explains setup; `30 Resources/GTD System.md` documents conventions.
+- Every skill works in both Claude Code and opencode (skills contain no harness-only dependency).
+- `/gtd-status` prints the brief in any harness; the Claude Code hook shows the same on session open.
+- `scripts/build_dashboard.py` writes a valid self-contained `dashboard.html` from the vault.
+- With `outlook-mcp-rs` configured on a Windows machine, `/gtd-outlook` can pull flagged email into
+  `00 Inbox/` and surface calendar during the weekly review; with it absent, everything else works.
+- README + `AGENTS.md` + `docs/gtd/*` explain setup for Claude Code and opencode.
