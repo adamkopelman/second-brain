@@ -1,0 +1,15 @@
+# Obsidian per-machine state (vendored plugins ARE tracked)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.trash/
+
+# Generated
+dashboard.html
+
+# OS / Python
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+.pytest_cache/
