@@ -23,6 +23,19 @@
 .dashboard .gtd-wa { border-top-color: #b06bd6; }
 .dashboard .gtd-du { border-top-color: #e5534b; }
 
+.dashboard .gtd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
+.dashboard .gtd-action-btn {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.dashboard .gtd-action-btn:hover { background: var(--interactive-accent-hover); }
+
 .dashboard .gtd-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

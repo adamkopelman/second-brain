@@ -50,6 +50,15 @@ try {
   let html = `<div class="gtd-kpis">` + tiles.map(([e,n,l,c]) =>
     `<div class="gtd-kpi gtd-${c}"><div class="gtd-kpi-n">${n}</div><div class="gtd-kpi-l">${e} ${esc(l)}</div></div>`).join("") + `</div>`;
 
+  // ---- Quick actions (QuickAdd) ----
+  const vaultName = encodeURIComponent(dv.app.vault.getName());
+  const qa = (choice) => `obsidian://quickadd?choice=${encodeURIComponent(choice)}&vault=${vaultName}`;
+  html += `<div class="gtd-actions">` +
+    `<a class="gtd-action-btn" href="${qa("Quick Capture")}">📥 Quick Capture</a>` +
+    `<a class="gtd-action-btn" href="${qa("New Next Action")}">⚡ New Next Action</a>` +
+    `<a class="gtd-action-btn" href="${qa("New Project")}">📋 New Project</a>` +
+    `</div>`;
+
   html += `<div class="gtd-grid">`;
 
   // ---- Next actions by context ----
