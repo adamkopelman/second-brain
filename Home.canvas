@@ -26,9 +26,9 @@
       "x": -40,
       "y": -200,
       "width": 330,
-      "height": 230,
+      "height": 260,
       "color": "4",
-      "text": "## \u26a1 Capture & Engage\n- [[00 Inbox]] \u2014 capture here\n- [[Dashboard]] \u2014 what's now\n- `/gtd-capture` \u00b7 `/gtd-next-actions` \u00b7 `/gtd-status`"
+      "text": "## \u26a1 Capture & Engage\n- [[00 Inbox]] \u2014 capture here\n- [[Dashboard]] \u2014 what's now, and click to add\n- `/gtd-capture` \u00b7 `/gtd-next-actions` \u00b7 `/gtd-status`\n- Dashboard buttons: Quick Capture \u00b7 New Next Action \u00b7 New Project (needs QuickAdd)"
     },
     {
       "id": "organize",
