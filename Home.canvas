@@ -1,0 +1,80 @@
+{
+  "nodes": [
+    {
+      "id": "dash",
+      "type": "file",
+      "file": "Dashboard.md",
+      "x": -640,
+      "y": -260,
+      "width": 560,
+      "height": 720,
+      "color": "6"
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "x": -40,
+      "y": -320,
+      "width": 700,
+      "height": 80,
+      "color": "6",
+      "text": "# \ud83e\udde0 Second Brain \u2014 Home\nYour launchpad. Click any link. The live dashboard is on the left."
+    },
+    {
+      "id": "engage",
+      "type": "text",
+      "x": -40,
+      "y": -200,
+      "width": 330,
+      "height": 230,
+      "color": "4",
+      "text": "## \u26a1 Capture & Engage\n- [[00 Inbox]] \u2014 capture here\n- [[Dashboard]] \u2014 what's now\n- `/gtd-capture` \u00b7 `/gtd-next-actions` \u00b7 `/gtd-status`"
+    },
+    {
+      "id": "organize",
+      "type": "text",
+      "x": 330,
+      "y": -200,
+      "width": 330,
+      "height": 360,
+      "color": "5",
+      "text": "## \ud83d\uddc2\ufe0f Organize (PARA)\n- [[10 Projects]]\n- [[20 Areas]]\n- [[30 Resources]]\n- [[40 Archive]]\n- [[People]]\n- [[Meetings]]\n- [[Journal]]"
+    },
+    {
+      "id": "reflect",
+      "type": "text",
+      "x": -40,
+      "y": 60,
+      "width": 330,
+      "height": 170,
+      "color": "2",
+      "text": "## \ud83d\udd04 Reflect\n- [[Weekly Review]] \u2014 the ritual\n- `/gtd-weekly-review`\n- `/gtd-maintain` \u2014 health check"
+    },
+    {
+      "id": "sys",
+      "type": "text",
+      "x": -40,
+      "y": 260,
+      "width": 700,
+      "height": 110,
+      "color": "1",
+      "text": "## \ud83d\udcda System\n- [[GTD System]] \u2014 conventions (tags, fields, frontmatter)\n- Outlook: `/gtd-outlook` \u00b7 portable HTML: `/gtd-dashboard`"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "fromNode": "title",
+      "fromSide": "left",
+      "toNode": "dash",
+      "toSide": "top"
+    },
+    {
+      "id": "e2",
+      "fromNode": "engage",
+      "fromSide": "right",
+      "toNode": "organize",
+      "toSide": "left"
+    }
+  ]
+}

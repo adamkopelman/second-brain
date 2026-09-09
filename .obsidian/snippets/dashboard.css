@@ -1,0 +1,80 @@
+/* GTD dashboard styling — applies to notes with `cssclasses: [dashboard]`.
+   Uses Obsidian theme variables so it adapts to light/dark and any theme. */
+
+.dashboard .gtd-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 4px 0 18px;
+}
+.dashboard .gtd-kpi {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+  background: var(--background-secondary);
+  border-top: 3px solid var(--interactive-accent);
+}
+.dashboard .gtd-kpi-n { font-size: 2rem; font-weight: 700; line-height: 1.1; color: var(--text-normal); }
+.dashboard .gtd-kpi-l { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+.dashboard .gtd-in { border-top-color: #e0a800; }
+.dashboard .gtd-pr { border-top-color: #4c8dff; }
+.dashboard .gtd-nx { border-top-color: #2ea043; }
+.dashboard .gtd-wa { border-top-color: #b06bd6; }
+.dashboard .gtd-du { border-top-color: #e5534b; }
+
+.dashboard .gtd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.dashboard .gtd-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--background-primary);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.dashboard .gtd-card h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+}
+.dashboard .gtd-card.gtd-span2 { grid-column: 1 / -1; }
+
+.dashboard .gtd-cols { display: flex; flex-wrap: wrap; gap: 12px; }
+.dashboard .gtd-col { flex: 1 1 150px; min-width: 140px; }
+.dashboard .gtd-col-h {
+  font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-muted); margin-bottom: 6px;
+}
+.dashboard .gtd-list { list-style: none; margin: 0; padding: 0; }
+.dashboard .gtd-list li {
+  padding: 5px 0; border-bottom: 1px solid var(--background-modifier-border-hover);
+  font-size: 0.88rem; line-height: 1.35;
+}
+.dashboard .gtd-list li:last-child { border-bottom: 0; }
+
+.dashboard .gtd-proj { color: var(--text-accent); font-size: 0.8rem; }
+.dashboard .gtd-due  { color: #e5534b; font-size: 0.78rem; white-space: nowrap; }
+.dashboard .gtd-since{ color: var(--text-muted); font-size: 0.78rem; }
+
+.dashboard .gtd-pcard {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 7px 0; border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+.dashboard .gtd-pcard:last-child { border-bottom: 0; }
+.dashboard .gtd-pill {
+  font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--background-modifier-border); color: var(--text-muted);
+}
+.dashboard .gtd-pill.due { background: rgba(229,83,75,0.15); color: #e5534b; }
+.dashboard .gtd-pill.ok  { background: rgba(46,160,67,0.15); color: #2ea043; }
+.dashboard .gtd-warn { color: #e5534b; font-size: 0.78rem; }
+.dashboard .gtd-empty { color: var(--text-faint); font-style: italic; font-size: 0.85rem; }
+.dashboard .gtd-err {
+  color: #e5534b; font-size: 0.82rem; border: 1px solid #e5534b; border-radius: 8px;
+  padding: 8px; background: rgba(229,83,75,0.06);
+}
