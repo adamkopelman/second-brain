@@ -12,6 +12,23 @@ Settings → Community plugins → Browse → "Dataview", then enable "Enable Ja
 Don't want Dataview at all? Run `/gtd-dashboard` for the portable `dashboard.html`, which needs
 no plugin and opens in any browser.
 
+### QuickAdd — powers the dashboard's Actions row
+QuickAdd is **vendored and pre-enabled** (`.obsidian/plugins/quickadd`,
+`.obsidian/community-plugins.json`), with three choices pre-configured in
+`.obsidian/plugins/quickadd/data.json`:
+- **Quick Capture** — appends a raw, untagged line to `00 Inbox/README.md`.
+- **New Next Action** — prompts for a project (from `10 Projects/`), a task, and a context; inserts
+  a formatted `#next` task line directly under that project's `## Next actions` heading.
+- **New Project** — prompts for a title and creates a new file in `10 Projects/` from
+  `_templates/Project.md`.
+
+`Dashboard.md`'s "➕ Actions" row links to these via `obsidian://quickadd?choice=<name>&vault=<name>`
+— click one to run it without opening the command palette. They're also always reachable via
+`Ctrl+P` → "QuickAdd: <choice name>" regardless of which note is open.
+If you ever start from a fresh vault without the vendored plugin, install QuickAdd via
+Settings → Community plugins → Browse → "QuickAdd", then recreate the three choices above (or copy
+`.obsidian/plugins/quickadd/data.json` from this repo).
+
 ### The dashboard's styling
 `Dashboard.md` carries `cssclasses: [dashboard]` and is styled by the snippet
 `.obsidian/snippets/dashboard.css` (enabled in `.obsidian/appearance.json`). `Dashboard (lists).md`

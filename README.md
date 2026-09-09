@@ -10,7 +10,7 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 | Setup skill | `/gtd-setup` scaffolds or repairs the whole vault, idempotently. |
 | GTD skills | `/gtd-capture`, `/gtd-process-inbox`, `/gtd-next-actions`, `/gtd-weekly-review`, `/gtd-status`, `/gtd-dashboard`. |
 | Outlook | `/gtd-outlook` pulls email/calendar via the `outlook-mcp-rs` MCP server. |
-| Live dashboard | `Dashboard.md` — a visual KPI + card grid (Dataview JS); `Dashboard (lists).md` is a no-JS fallback. |
+| Live dashboard | `Dashboard.md` — a visual KPI + card grid (Dataview JS) with a clickable Actions row (QuickAdd) to capture a task, add a next action to a project, or start a new project; `Dashboard (lists).md` is a no-JS fallback. |
 | Home board | `Home.canvas` — a spatial launchpad (Obsidian Canvas) embedding the dashboard + link-cards. |
 | Portable dashboard | `dashboard.html` — self-contained, any browser (`/gtd-dashboard`). |
 | Portability | Skills in `.claude/skills/` (Claude Code, opencode, Claudian); MCP in `.mcp.json` + `opencode.json`; see `AGENTS.md`. |
