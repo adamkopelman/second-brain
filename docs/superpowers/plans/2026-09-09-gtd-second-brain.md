@@ -745,6 +745,52 @@ in any harness. Complements the live `Dashboard.md` (Obsidian + Dataview).
 
 ---
 
+### Task 11b: Vendor external artifacts (self-contained repo)
+
+Goal: the repo contains everything except Obsidian and the LLM harness — the community plugins and
+the Outlook MCP binary ship in-repo, version-pinned. All are fetched from GitHub release assets
+(the `github.com/<repo>/releases/latest/download/<file>` path works through the proxy).
+
+**Files:**
+- Create: `.obsidian/plugins/{dataview,realclaudian,smart-second-brain}/{manifest.json,main.js,styles.css}`, `vendor/outlook-mcp-rs/outlook-mcp-rs.exe`, `vendor/README.md`, `.obsidian/plugins/README.md`
+
+- [ ] **Step 1: Download the three plugins**
+
+```bash
+for spec in "dataview:blacksmithgu/obsidian-dataview" "realclaudian:YishenTu/claudian" "smart-second-brain:your-papa/obsidian-smart2brain"; do
+  id="${spec%%:*}"; repo="${spec#*:}"; mkdir -p ".obsidian/plugins/$id"
+  for f in manifest.json main.js styles.css; do
+    curl -sSL -f -o ".obsidian/plugins/$id/$f" "https://github.com/$repo/releases/latest/download/$f" || rm -f ".obsidian/plugins/$id/$f"
+  done
+done
+```
+
+- [ ] **Step 2: Download the Outlook binary**
+
+```bash
+mkdir -p vendor/outlook-mcp-rs
+curl -sSL -f -o vendor/outlook-mcp-rs/outlook-mcp-rs.exe \
+  "https://github.com/adamkopelman/outlook-mcp-rs/releases/latest/download/outlook-mcp-rs.exe"
+```
+
+- [ ] **Step 3: Write provenance notes** (record source + pinned version from each `manifest.json`)
+
+`.obsidian/plugins/README.md` — a table of vendored plugins, their `id`, version (from manifest),
+source repo URL, and license; note "vendored release builds; update by re-downloading the release
+assets." `vendor/README.md` — the Outlook binary's source repo, version/tag, platform
+(Windows x86-64), sha256 (`sha256sum`), and that it's used via `$OUTLOOK_MCP_BIN`.
+
+- [ ] **Step 4: Verify** — Run: `for p in dataview realclaudian smart-second-brain; do test -f ".obsidian/plugins/$p/main.js" && test -f ".obsidian/plugins/$p/manifest.json" && echo "OK $p"; done; file vendor/outlook-mcp-rs/outlook-mcp-rs.exe | grep -q 'MS Windows' && echo "OK exe"`. Expected: three `OK <plugin>` + `OK exe`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add .obsidian/plugins vendor
+git commit -m "chore: vendor Obsidian plugins and Outlook MCP binary (self-contained repo)"
+```
+
+---
+
 ### Task 12: SessionStart hook (optional Claude Code auto-trigger)
 
 **Files:** Create `.claude/hooks/gtd-status.sh`, `.claude/hooks/test_gtd-status.sh`, `.claude/settings.json`
@@ -958,9 +1004,11 @@ notes). No auth/tokens — it uses your signed-in Outlook session.
     # → target/release/outlook-mcp-rs.exe
 
 ## Point the vault at it
-Set an environment variable to the binary's full path (both harness configs read it):
+The prebuilt binary is **already vendored** in this repo at `vendor/outlook-mcp-rs/outlook-mcp-rs.exe`
+(you only need to build it yourself to update the version). Set an environment variable to its full
+path (both harness configs read it):
 
-    setx OUTLOOK_MCP_BIN "C:\path\to\outlook-mcp-rs.exe"     # Windows
+    setx OUTLOOK_MCP_BIN "%CD%\vendor\outlook-mcp-rs\outlook-mcp-rs.exe"   # from the repo root, Windows
 
 - Claude Code reads `.mcp.json` → server `outlook` → `command: ${OUTLOOK_MCP_BIN}`.
 - opencode reads `opencode.json` → `mcp.outlook.command: ["{env:OUTLOOK_MCP_BIN}"]`.
@@ -1510,19 +1558,19 @@ TABLE file.ctime AS "Reviewed" FROM "Journal" WHERE contains(tags, "weekly-revie
 ```json
 { "folder": "Journal", "format": "YYYY-MM-DD", "template": "_templates/Daily Note.md" }
 ```
-`.obsidian/community-plugins.json`
+`.obsidian/community-plugins.json` (enables the vendored plugins — see Task 11b)
 ```json
-[]
+["dataview", "realclaudian", "smart-second-brain"]
 ```
 
 ### A.7 `.gitignore`
+> Note: `.obsidian/plugins/` is intentionally **tracked** (vendored plugins ship in the repo — see
+> Task 11b), so it is NOT ignored. Only per-machine state is ignored.
 ```gitignore
-# Obsidian per-machine state
+# Obsidian per-machine state (vendored plugins ARE tracked)
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .obsidian/cache
-.obsidian/plugins/
-.obsidian/themes/
 .trash/
 
 # Generated
