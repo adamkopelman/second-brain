@@ -1,0 +1,87 @@
+{
+  "choices": [
+    {
+      "id": "faf7c466-8550-499b-9759-7dfa9508af39",
+      "name": "Quick Capture",
+      "type": "Capture",
+      "command": false,
+      "captureTo": "00 Inbox/README.md",
+      "captureToActiveFile": false,
+      "captureToCanvasNodeId": "",
+      "activeFileWritePosition": "cursor",
+      "createFileIfItDoesntExist": { "enabled": false, "createWithTemplate": false, "template": "" },
+      "format": { "enabled": true, "format": "{{VALUE}}" },
+      "prepend": false,
+      "appendLink": false,
+      "task": true,
+      "insertAfter": {
+        "enabled": false,
+        "after": "",
+        "insertAtEnd": false,
+        "considerSubsections": false,
+        "createIfNotFound": false,
+        "createIfNotFoundLocation": "top",
+        "inline": false,
+        "replaceExisting": false,
+        "blankLineAfterMatchMode": "auto",
+        "promptHeading": false
+      },
+      "insertBefore": { "enabled": false, "before": "", "createIfNotFound": false, "createIfNotFoundLocation": "top" },
+      "newLineCapture": { "enabled": false, "direction": "below" },
+      "openFile": false,
+      "fileOpening": { "location": "tab", "direction": "vertical", "mode": "default", "focus": true }
+    },
+    {
+      "id": "bcad0b28-0440-4f08-8563-677e8dc28e78",
+      "name": "New Next Action",
+      "type": "Capture",
+      "command": false,
+      "captureTo": "10 Projects/{{FILE:10 Projects|name|label:Project}}.md",
+      "captureToActiveFile": false,
+      "captureToCanvasNodeId": "",
+      "activeFileWritePosition": "cursor",
+      "createFileIfItDoesntExist": { "enabled": false, "createWithTemplate": false, "template": "" },
+      "format": { "enabled": true, "format": "{{VALUE}} #next #{{VALUE:computer,phone,errands,home,office,anywhere,agenda|name:context}}" },
+      "prepend": false,
+      "appendLink": false,
+      "task": true,
+      "insertAfter": {
+        "enabled": true,
+        "after": "## Next actions",
+        "insertAtEnd": false,
+        "considerSubsections": false,
+        "createIfNotFound": false,
+        "createIfNotFoundLocation": "top",
+        "inline": false,
+        "replaceExisting": false,
+        "blankLineAfterMatchMode": "auto",
+        "promptHeading": false
+      },
+      "insertBefore": { "enabled": false, "before": "", "createIfNotFound": false, "createIfNotFoundLocation": "top" },
+      "newLineCapture": { "enabled": false, "direction": "below" },
+      "openFile": false,
+      "fileOpening": { "location": "tab", "direction": "vertical", "mode": "default", "focus": true }
+    },
+    {
+      "id": "425d93c8-e8f3-44b3-887a-e9a1d16ae2d0",
+      "name": "New Project",
+      "type": "Template",
+      "command": false,
+      "templatePath": "_templates/Project.md",
+      "folder": {
+        "enabled": true,
+        "folders": ["10 Projects"],
+        "chooseWhenCreatingNote": false,
+        "createInSameFolderAsActiveFile": false,
+        "chooseFromSubfolders": false
+      },
+      "fileNameFormat": { "enabled": true, "format": "{{VALUE:title|label:Project title}}" },
+      "discoverExistingNotesBeforeCreate": false,
+      "appendLink": false,
+      "copyLinkToClipboard": false,
+      "openFile": true,
+      "fileOpening": { "location": "tab", "direction": "vertical", "mode": "default", "focus": true },
+      "fileExistsBehavior": { "kind": "prompt" }
+    }
+  ]
+}
