@@ -74,6 +74,9 @@ docs/gtd/obsidian-plugins.md                           (Task 16)
 docs/gtd/portability.md                                (Task 17)
 docs/gtd/html-dashboard.md                             (Task 17)
 README.md                                              (Task 18 — rewrite)
+
+# Optional (Phase 6)
+.claude/skills/gtd-maintain/SKILL.md                   (Task 19 — optional)
 ```
 
 ---
@@ -868,11 +871,13 @@ Status: `#next` `#waiting` `#someday`. Fields: `[due:: ]` `[scheduled:: ]` `[sin
 `30 Resources/GTD System.md`.
 
 ## Harness notes
-- Skills are discovered from `.claude/skills/` by both Claude Code and opencode.
+- Skills are discovered from `.claude/skills/` by Claude Code, opencode, and Claudian (the Obsidian
+  plugin that runs one of those agents in a side panel — the recommended way to use the vault).
 - MCP: Claude Code reads `.mcp.json`; opencode reads `opencode.json`. Both launch the Outlook server
   from `$OUTLOOK_MCP_BIN`.
 - The session brief is the `gtd-status` skill. Claude Code additionally auto-runs it via a
   `SessionStart` hook (`.claude/settings.json`); other harnesses: run `/gtd-status`.
+- Optional: `gtd-maintain` runs a lightweight vault health pass; schedule it per harness if wanted.
 ```
 
 - [ ] **Step 2: Verify** — Run: `grep -q 'gtd-setup' AGENTS.md && grep -q 'OUTLOOK_MCP_BIN' AGENTS.md && echo OK`. Expected: `OK`.
@@ -994,6 +999,10 @@ Everything else in the vault works without Outlook. The `outlook` server just wo
 Without Dataview, use `/gtd-dashboard` (the portable `dashboard.html`) instead — no plugin needed.
 
 ## Optional
+- **Smart Second Brain** (`obsidian-smart2brain`) — semantic / RAG search + an AI assistant that
+  knows your notes. Complements Dataview: Dataview does *structured* queries (tags, fields),
+  Smart Second Brain does *fuzzy/semantic* retrieval ("what did I note about pricing?"). Install via
+  Community plugins → "Smart Second Brain".
 - **Tasks** — richer task querying/recurrence; compatible with our checkbox conventions.
 - **Calendar** — month view tied to `Journal/` daily notes.
 - **Templater** — dynamic templates; our `_templates/` use core Templates and work without it.
@@ -1028,6 +1037,16 @@ The system is skills + MCP + plain markdown, so it runs anywhere skills are disc
 - Skills: opencode discovers `.claude/skills/` natively (also `.opencode/skills`).
 - MCP: `opencode.json` (`mcp.outlook`, `command: ["{env:OUTLOOK_MCP_BIN}"]`).
 - Session brief: run `/gtd-status` (no hook system needed).
+
+## Claudian (inside Obsidian) — recommended
+[Claudian](https://community.obsidian.md/plugins/realclaudian) is an Obsidian community plugin that
+embeds a CLI agent (Claude Code / opencode / Codex) in a side panel with this vault as the working
+directory — so you drive the whole GTD system without leaving Obsidian.
+- Install: Community plugins → "Claudian"; it requires a CLI agent already installed on your machine.
+- Skills: it runs the underlying agent, which discovers `.claude/skills/` — all `gtd-*` skills work.
+- MCP/brief: inherited from whichever agent Claudian runs (Claude Code → `.mcp.json` + hook;
+  opencode → `opencode.json` + `/gtd-status`).
+- This is the recommended day-to-day setup: live `Dashboard.md` and skills in one window.
 
 ## Any other skills+MCP harness
 - Place/point skills at `.claude/skills/`. Configure the Outlook server per that harness's MCP
@@ -1081,14 +1100,16 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 | Outlook | `/gtd-outlook` pulls email/calendar via the `outlook-mcp-rs` MCP server. |
 | Live dashboard | `Dashboard.md` — Dataview queries inside Obsidian. |
 | Portable dashboard | `dashboard.html` — self-contained, any browser (`/gtd-dashboard`). |
-| Portability | Skills in `.claude/skills/` (Claude Code + opencode); MCP in `.mcp.json` + `opencode.json`; see `AGENTS.md`. |
+| Portability | Skills in `.claude/skills/` (Claude Code, opencode, Claudian); MCP in `.mcp.json` + `opencode.json`; see `AGENTS.md`. |
 
 ## Getting started
 1. Scaffold (if starting empty): `/gtd-setup`, or `python3 .claude/skills/gtd-setup/apply.py .`
 2. Open the folder as an Obsidian vault.
 3. Install Dataview — see `docs/gtd/obsidian-plugins.md`.
-4. (Optional) Wire Outlook — see `docs/gtd/outlook.md`.
-5. Read `30 Resources/GTD System.md` for conventions. Capture with `/gtd-capture`; review weekly
+4. (Recommended) Install **Claudian** to run these skills inside Obsidian; (optional) **Smart Second
+   Brain** for semantic search. See `docs/gtd/portability.md` and `docs/gtd/obsidian-plugins.md`.
+5. (Optional) Wire Outlook — see `docs/gtd/outlook.md`.
+6. Read `30 Resources/GTD System.md` for conventions. Capture with `/gtd-capture`; review weekly
    with `/gtd-weekly-review`.
 
 ## Conventions (quick reference)
@@ -1101,6 +1122,55 @@ Full details: `30 Resources/GTD System.md`. Design/plan: `docs/superpowers/`. Ha
 
 - [ ] **Step 2: Verify** — Run: `grep -q 'gtd-setup' README.md && grep -q opencode README.md && echo OK`. Expected: `OK`.
 - [ ] **Step 3: Commit** — `git add README.md && git commit -m "docs: rewrite README for the portable skills+MCP second brain"`
+
+---
+
+## Phase 6 — Optional: borrowed enhancements
+
+> Build only if wanted. Semantic search is already covered by the optional **Smart Second Brain**
+> plugin (Task 16). This phase adds the one code idea worth borrowing: a scheduled vault-health pass.
+
+### Task 19: `gtd-maintain` skill (vault health pass)
+
+**Files:** Create `.claude/skills/gtd-maintain/SKILL.md`
+
+- [ ] **Step 1: Write the skill**
+
+~~~markdown
+---
+name: gtd-maintain
+description: Use when the user wants a health check of their GTD vault, or to run a maintenance pass — finding stuck projects, stale waiting-for items, overdue reviews, and archive candidates. Triggers on "maintain", "health check", "tidy the vault", "what's stuck", "gtd maintenance".
+---
+
+# GTD Maintain (health pass)
+
+A read-only audit that surfaces problems and *proposes* fixes (never auto-edits without confirming).
+Read `30 Resources/GTD System.md`. Runs in any harness; can be scheduled (see below).
+
+## Checks
+1. **Stuck projects** — `status: active` notes in `10 Projects/` with no open `#next` task.
+2. **Stale waiting-for** — `#waiting` tasks whose `[since:: DATE]` is > 14 days ago.
+3. **Overdue reviews** — active projects whose `review:` date is in the past.
+4. **Aging inbox** — count of `00 Inbox/` items (excluding `README.md`); flag if not empty.
+5. **Archive candidates** — `status: done` projects still outside `40 Archive/`.
+
+## Output
+A short report grouped by check, each item naming the file. Then offer concrete fixes:
+add a `#next`, ping a person (`#agenda`), bump `review:`, archive a done project — applying only
+what the user approves.
+
+## Scheduling (optional, per harness)
+- Claude Code: a Routine / cron that sends "run /gtd-maintain and summarize" on a schedule.
+- opencode / other: the harness's own scheduler, or a system cron invoking the agent.
+Keep scheduled runs read-only (report only); apply fixes interactively.
+
+## Rules
+- Read-only by default; confirm before any edit or archive move. Never delete notes.
+~~~
+
+- [ ] **Step 2: Verify frontmatter** (standard command, this path). Expected: `OK`.
+
+- [ ] **Step 3: Commit** — `git add .claude/skills/gtd-maintain && git commit -m "feat: add optional gtd-maintain vault health skill"`
 
 ---
 
@@ -1473,8 +1543,10 @@ __pycache__/
 **1. Spec coverage** — Setup skill → Tasks 1–3. GTD skills (5 steps + status) → Tasks 4–8. Portable
 dashboard + live dashboard → Tasks 9–10 (+ `Dashboard.md` in Appendix A.4 via setup). Cross-harness
 (skills location, dual MCP config, hook-as-optional, AGENTS.md) → Tasks 11–13, spec's portability
-section. Outlook MCP → Tasks 11, 14, 15. Docs/README → Tasks 15–18. CLI → intentionally dropped
-(spec non-goal). Superpowers prerequisite → Global Constraints.
+section. Outlook MCP → Tasks 11, 14, 15. Docs/README → Tasks 15–18. External tools: Claudian (harness) →
+`docs/gtd/portability.md`, `AGENTS.md`, README (Tasks 17, 13, 18); Smart Second Brain (semantic
+search) → `docs/gtd/obsidian-plugins.md` (Task 16). Borrowed enhancement `gtd-maintain` → Task 19
+(optional). CLI → intentionally dropped (spec non-goal). Superpowers prerequisite → Global Constraints.
 
 **2. Placeholder scan** — no "TBD"/"add error handling"/"similar to Task N". Code steps carry full
 implementations; content steps carry full bodies (large vault bodies consolidated once in Appendix A

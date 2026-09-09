@@ -24,7 +24,9 @@ outlives any single tool.
 ## Cross-harness portability (hard requirement)
 
 - **Skills are the primary interface.** Skills live in `.claude/skills/` — discovered natively by
-  both Claude Code and opencode. No skill may depend on a Claude-Code-only capability to function.
+  Claude Code, opencode, and **Claudian** (the Obsidian community plugin that hosts Claude Code /
+  opencode / Codex in a side panel, vault as working directory). No skill may depend on a
+  Claude-Code-only capability to function.
 - **Anything a harness does "by default" must also exist as a skill.** Example: the session-open
   status brief is the `gtd-status` skill; the Claude Code `SessionStart` hook is only an optional
   auto-trigger that calls the same logic.
@@ -63,6 +65,13 @@ outlives any single tool.
   binary path in both harness MCP configs; `gtd-outlook` skill drives email→inbox and
   calendar→review flows.
 - **SessionStart hook:** optional Claude-Code-only auto-trigger for `gtd-status`; read-only.
+- **Supported external tools:** **Claudian** (recommended harness — run the vault's skills from
+  inside Obsidian) and **Smart Second Brain** (optional plugin — semantic/RAG search over notes,
+  complementing Dataview's structured queries). Both optional; documented, not required.
+- **Borrowed enhancements (optional phase):** a `gtd-maintain` skill (flag projects with no next
+  action, stale waiting-for, propose archives) that can be run on a schedule per harness — an idea
+  adapted from existing second-brain skill-packs. We stay bespoke; we do not layer another
+  second-brain skill-pack on top (competing conventions would cause skill mis-triggering).
 
 ## Acceptance criteria
 
