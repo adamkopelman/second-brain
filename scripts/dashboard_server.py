@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Local, 127.0.0.1-only dashboard server for the vault. stdlib only."""
+from __future__ import annotations
+import argparse
+import json
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dashboard_parser as P
+import dashboard_writer as W
+
+STATIC_DIR = Path(__file__).resolve().parent / "dashboard_static"
+STATIC_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/logic.js": ("logic.js", "application/javascript; charset=utf-8"),
+    "/style.css": ("style.css", "text/css; charset=utf-8"),
+}
+
+
+def make_handler(vault: Path):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            pass  # keep test/console output quiet
+
+        def _send_json(self, obj, status=200):
+            body = json.dumps(obj).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _read_json(self):
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            return json.loads(raw or b"{}")
+
+        def do_GET(self):
+            path = urlparse(self.path).path
+            if path == "/api/state":
+                self._send_json(P.collect_state(vault))
+                return
+            if path in STATIC_FILES:
+                fname, ctype = STATIC_FILES[path]
+                fpath = STATIC_DIR / fname
+                if not fpath.is_file():
+                    self._send_json({"error": "not found"}, 404)
+                    return
+                body = fpath.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            self._send_json({"error": "not found"}, 404)
+
+    return Handler
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("vault", nargs="?", default=".")
+    ap.add_argument("--port", type=int, default=8787)
+    a = ap.parse_args(argv)
+    vault = Path(a.vault).resolve()
+    server = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(vault))
+    print(f"Dashboard server running at http://127.0.0.1:{a.port} (vault: {vault})")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
