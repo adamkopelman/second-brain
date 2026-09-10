@@ -104,6 +104,19 @@ try {
   html += `</div>`;
   const root = dv.el("div", "", { cls: "gtd-root" });
   root.innerHTML = html;
+
+  // Raw anchors injected via innerHTML never get Obsidian's own link-click
+  // interception (that only runs on links produced by its markdown renderer),
+  // so a plain href="obsidian://..." falls through to a same-window navigation
+  // attempt that resolves to nothing. Firing window.open() from a real click
+  // handler routes it through Electron's external-URL handling instead, which
+  // Obsidian does intercept and dispatch to its registerObsidianProtocolHandler.
+  root.querySelectorAll(".gtd-action-btn").forEach(a => {
+    a.addEventListener("click", evt => {
+      evt.preventDefault();
+      window.open(a.getAttribute("href"));
+    });
+  });
 } catch (e) {
   dv.el("div", "Dashboard error: " + (e && e.message ? e.message : e), { cls: "gtd-err" });
 }
