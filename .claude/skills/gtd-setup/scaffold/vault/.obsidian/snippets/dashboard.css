@@ -70,6 +70,13 @@
 }
 .dashboard .gtd-list li:last-child { border-bottom: 0; }
 
+/* Real interactive tasks rendered by dv.api.taskList — scale to match .gtd-list */
+.dashboard .gtd-tasklist ul.contains-task-list { margin: 0; padding-left: 1.1em; }
+.dashboard .gtd-tasklist .task-list-item {
+  font-size: 0.88rem; line-height: 1.35; padding: 3px 0;
+}
+.dashboard .gtd-tasklist .task-list-item-checkbox { margin-right: 4px; }
+
 .dashboard .gtd-proj { color: var(--text-accent); font-size: 0.8rem; }
 .dashboard .gtd-due  { color: #e5534b; font-size: 0.78rem; white-space: nowrap; }
 .dashboard .gtd-since{ color: var(--text-muted); font-size: 0.78rem; }

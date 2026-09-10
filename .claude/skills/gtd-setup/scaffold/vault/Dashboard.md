@@ -17,15 +17,7 @@ try {
   const CTX = ["#computer","#phone","#errands","#home","#office","#anywhere","#agenda"];
   const CTX_LABEL = {"#computer":"💻 Computer","#phone":"📞 Phone","#errands":"🚗 Errands","#home":"🏠 Home","#office":"🏢 Office","#anywhere":"🌐 Anywhere","#agenda":"👥 Agenda"};
   const has = (t, tag) => (t.tags ?? []).includes(tag);
-  const clean = t => {
-    let s = t.text || "";
-    s = s.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1");
-    s = s.replace(/\[[a-z][a-z0-9_-]*::[^\]]*\]/gi, "");
-    s = s.replace(/#[A-Za-z][\w-]*/g, "");
-    return esc(s.replace(/\s+/g, " ").trim());
-  };
   const dstr = d => { try { return d && d.toFormat ? d.toFormat("LLL d") : String(d).slice(0,10); } catch(e) { return esc(String(d)); } };
-  const projOf = t => { try { const o = t.outlinks; if (o && o.length) return esc((o[0].path || String(o[0])).split("/").pop().replace(/\.md$/,"")); } catch(e){} return ""; };
 
   // ---- collect ----
   const folders = ["00 Inbox","10 Projects","20 Areas","Journal","People","Meetings"];
@@ -61,30 +53,26 @@ try {
 
   html += `<div class="gtd-grid">`;
 
-  // ---- Next actions by context ----
+  // ---- Next actions by context (real interactive checkboxes, filled in after render) ----
+  const taskListTargets = []; // [elementId, tasks][]
   const byCtx = {};
   for (const t of nexts) { const c = CTX.find(x => has(t,x)) || "#anywhere"; (byCtx[c] ??= []).push(t); }
   let cols = "";
   for (const c of CTX) {
     const items = byCtx[c]; if (!items || !items.length) continue;
-    const li = items.slice(0,12).map(t => {
-      const pj = projOf(t); const du = t.due ? ` <span class="gtd-due">📅 ${dstr(t.due)}</span>` : "";
-      return `<li>${clean(t)}${pj ? ` <span class="gtd-proj">${pj}</span>` : ""}${du}</li>`; }).join("");
-    cols += `<div class="gtd-col"><div class="gtd-col-h">${esc(CTX_LABEL[c] || c)} · ${items.length}</div><ul class="gtd-list">${li}</ul></div>`;
+    const id = `gtd-tl-${c.slice(1)}`;
+    taskListTargets.push([id, items.slice(0,12)]);
+    cols += `<div class="gtd-col"><div class="gtd-col-h">${esc(CTX_LABEL[c] || c)} · ${items.length}</div><div class="gtd-tasklist" id="${id}"></div></div>`;
   }
   html += `<div class="gtd-card gtd-span2"><h3>⚡ Next actions — by context</h3>${cols ? `<div class="gtd-cols">${cols}</div>` : `<div class="gtd-empty">No next actions queued. Run /gtd-process-inbox or /gtd-weekly-review.</div>`}</div>`;
 
   // ---- Due soon ----
-  const dueLi = dueSoon.slice(0,12).map(t => {
-    const overdue = t.due < today; const pj = projOf(t);
-    return `<li>${clean(t)}${pj ? ` <span class="gtd-proj">${pj}</span>` : ""} <span class="${overdue ? "gtd-warn" : "gtd-due"}">${overdue ? "⚠ " : "📅 "}${dstr(t.due)}</span></li>`; }).join("");
-  html += `<div class="gtd-card"><h3>🔥 Due soon (7 days)</h3>${dueLi ? `<ul class="gtd-list">${dueLi}</ul>` : `<div class="gtd-empty">Nothing due.</div>`}</div>`;
+  html += `<div class="gtd-card"><h3>🔥 Due soon (7 days)</h3>${dueSoon.length ? `<div class="gtd-tasklist" id="gtd-tl-due"></div>` : `<div class="gtd-empty">Nothing due.</div>`}</div>`;
+  if (dueSoon.length) taskListTargets.push(["gtd-tl-due", dueSoon.slice(0,12)]);
 
   // ---- Waiting for ----
-  const wLi = waiting.slice(0,12).map(t => {
-    const who = projOf(t); const since = t.since ? ` <span class="gtd-since">since ${dstr(t.since)}</span>` : "";
-    return `<li>${clean(t)}${who ? ` <span class="gtd-proj">${who}</span>` : ""}${since}</li>`; }).join("");
-  html += `<div class="gtd-card"><h3>⏳ Waiting for</h3>${wLi ? `<ul class="gtd-list">${wLi}</ul>` : `<div class="gtd-empty">Not waiting on anyone.</div>`}</div>`;
+  html += `<div class="gtd-card"><h3>⏳ Waiting for</h3>${waiting.length ? `<div class="gtd-tasklist" id="gtd-tl-waiting"></div>` : `<div class="gtd-empty">Not waiting on anyone.</div>`}</div>`;
+  if (waiting.length) taskListTargets.push(["gtd-tl-waiting", waiting.slice(0,12)]);
 
   // ---- Active projects ----
   let pRows = "";
@@ -120,6 +108,15 @@ try {
   html += `</div>`;
   const root = dv.el("div", "", { cls: "gtd-root" });
   root.innerHTML = html;
+
+  // Real interactive checkboxes (dv.api.taskList mounts Obsidian's own task
+  // renderer — checking one actually toggles the source file, unlike plain
+  // <li> text). Rendered after innerHTML so the placeholder divs exist to
+  // render into.
+  for (const [id, items] of taskListTargets) {
+    const target = root.querySelector("#" + id);
+    if (target) await dv.api.taskList(items, false, target, dv.component, dv.currentFilePath);
+  }
 
   // Raw anchors injected via innerHTML never get Obsidian's own link-click
   // interception (that only runs on links produced by its markdown renderer),
