@@ -18,6 +18,20 @@ class AmbiguousLineError(Exception):
     pass
 
 
+class PathEscapesVaultError(Exception):
+    pass
+
+
+def _resolve(vault: Path, rel: str) -> Path:
+    root = Path(vault).resolve()
+    candidate = (root / rel).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        raise PathEscapesVaultError(f"path escapes vault: {rel!r}")
+    return candidate
+
+
 def _find_line_index(lines: list[str], line_text: str) -> int:
     matches = [i for i, l in enumerate(lines) if l.rstrip() == line_text]
     if not matches:
@@ -36,7 +50,7 @@ def _write_lines(path: Path, lines: list[str]) -> None:
 
 
 def complete_task(vault: Path, file: str, line_text: str) -> None:
-    path = Path(vault) / file
+    path = _resolve(vault, file)
     lines = _read_lines(path)
     i = _find_line_index(lines, line_text)
     lines[i] = _re.sub(r"^(\s*-\s*\[)[ ](\].*)$", r"\1x\2", lines[i], count=1)
@@ -44,7 +58,7 @@ def complete_task(vault: Path, file: str, line_text: str) -> None:
 
 
 def delete_task(vault: Path, file: str, line_text: str) -> None:
-    path = Path(vault) / file
+    path = _resolve(vault, file)
     lines = _read_lines(path)
     i = _find_line_index(lines, line_text)
     del lines[i]
@@ -53,10 +67,12 @@ def delete_task(vault: Path, file: str, line_text: str) -> None:
 
 def edit_task(vault: Path, file: str, line_text: str,
                new_text: str | None = None, new_due: str | None = None) -> str:
-    path = Path(vault) / file
+    path = _resolve(vault, file)
     lines = _read_lines(path)
     i = _find_line_index(lines, line_text)
     m = _re.match(r"^(\s*-\s*\[[ xX]\]\s*)(.*)$", lines[i])
+    if not m:
+        raise LineNotFoundError(f"not a task checkbox line: {lines[i]!r}")
     prefix, body = m.group(1), m.group(2)
 
     tags = BD.TAG_RE.findall(body)
@@ -103,7 +119,7 @@ def create_task(vault: Path, text: str, context: str, project: str | None = None
         path.write_text(content, encoding="utf-8")
         return {"file": rel, "line_text": line_text}
 
-    proj_path = vault / "10 Projects" / f"{project}.md"
+    proj_path = _resolve(vault, f"10 Projects/{project}.md")
     if not proj_path.is_file():
         raise FileNotFoundError(f"project not found: {project}")
     lines = _read_lines(proj_path)
@@ -132,8 +148,8 @@ def create_project(vault: Path, title: str) -> str:
     today = _dt.date.today().isoformat()
     content = template.replace("{{title}}", title)
     content = _re.sub(r"\{\{date:YYYY-MM-DD\}\}", today, content)
-    dest = vault / "10 Projects" / f"{title}.md"
+    dest = _resolve(vault, f"10 Projects/{title}.md")
     if dest.exists():
         raise FileExistsError(f"project already exists: {title}")
     dest.write_text(content, encoding="utf-8")
-    return str(dest.relative_to(vault)).replace("\\", "/")
+    return str(dest.relative_to(Path(vault).resolve())).replace("\\", "/")
