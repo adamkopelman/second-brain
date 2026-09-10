@@ -192,3 +192,45 @@ def test_post_with_cross_origin_header_is_rejected(tmp_path):
             assert e.code == 403
     finally:
         server.shutdown()
+
+
+def test_edit_task_passes_through_new_context(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with _post(server, "/api/edit-task",
+                    {"file": "10 Projects/P.md", "line_text": "- [ ] Pick SSG #next #computer",
+                     "new_context": "phone"}) as r:
+            data = json.loads(r.read())
+        assert data["line_text"] == "- [ ] Pick SSG #next #phone"
+        text = (tmp_path / "10 Projects" / "P.md").read_text()
+        assert "#phone" in text
+    finally:
+        server.shutdown()
+
+
+def test_transcribe_endpoint_reports_no_pending_meetings(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "vendor" / "whisper-cpp").mkdir(parents=True)
+    (tmp_path / "vendor" / "whisper-cpp" / "whisper-cli.exe").write_text("stub")
+    server = _start_server(tmp_path)
+    try:
+        with _post(server, "/api/transcribe", {}) as r:
+            data = json.loads(r.read())
+        assert data["ok"] is True
+        assert "No pending meeting recordings." in data["output"]
+    finally:
+        server.shutdown()
+
+
+def test_transcribe_endpoint_returns_500_when_whisper_binary_missing(tmp_path):
+    _mk_vault(tmp_path)  # no vendor/ dir at all
+    server = _start_server(tmp_path)
+    try:
+        try:
+            _post(server, "/api/transcribe", {})
+            assert False, "expected HTTPError"
+        except HTTPError as e:
+            assert e.code == 500
+    finally:
+        server.shutdown()
