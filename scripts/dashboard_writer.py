@@ -3,6 +3,7 @@
 from __future__ import annotations
 import datetime as _dt
 import re as _re
+import subprocess as _subprocess
 import sys as _sys
 from pathlib import Path
 
@@ -66,7 +67,8 @@ def delete_task(vault: Path, file: str, line_text: str) -> None:
 
 
 def edit_task(vault: Path, file: str, line_text: str,
-               new_text: str | None = None, new_due: str | None = None) -> str:
+               new_text: str | None = None, new_due: str | None = None,
+               new_context: str | None = None) -> str:
     path = _resolve(vault, file)
     lines = _read_lines(path)
     i = _find_line_index(lines, line_text)
@@ -82,6 +84,10 @@ def edit_task(vault: Path, file: str, line_text: str,
 
     if new_due is not None:
         fields["due"] = new_due
+
+    if new_context is not None:
+        ctx_bare = new_context.lstrip("#")
+        tags = [t for t in tags if f"#{t}" not in BD.CONTEXTS] + [ctx_bare]
 
     parts = [text]
     parts += [f"#{t}" for t in tags]
@@ -153,3 +159,15 @@ def create_project(vault: Path, title: str) -> str:
         raise FileExistsError(f"project already exists: {title}")
     dest.write_text(content, encoding="utf-8")
     return str(dest.relative_to(Path(vault).resolve())).replace("\\", "/")
+
+
+def run_transcription(vault: Path) -> str:
+    vault = Path(vault)
+    script = Path(__file__).resolve().parent / "transcribe_meetings.py"
+    result = _subprocess.run(
+        [_sys.executable, str(script), str(vault)],
+        capture_output=True, text=True, timeout=1800,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "transcription failed")
+    return result.stdout.strip()
