@@ -14,8 +14,8 @@ cssclasses:
 try {
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const today = dv.date("today");
-  const CTX = ["#computer","#phone","#errands","#home","#office","#anywhere","#agenda"];
-  const CTX_LABEL = {"#computer":"💻 Computer","#phone":"📞 Phone","#errands":"🚗 Errands","#home":"🏠 Home","#office":"🏢 Office","#anywhere":"🌐 Anywhere","#agenda":"👥 Agenda"};
+  const CTX = ["#computer","#phone","#errands","#home","#office","#anywhere","#agenda","#unknown"];
+  const CTX_LABEL = {"#computer":"💻 Computer","#phone":"📞 Phone","#errands":"🚗 Errands","#home":"🏠 Home","#office":"🏢 Office","#anywhere":"🌐 Anywhere","#agenda":"👥 Agenda","#unknown":"❓ Unknown"};
   const has = (t, tag) => (t.tags ?? []).includes(tag);
   const dstr = d => { try { return d && d.toFormat ? d.toFormat("LLL d") : String(d).slice(0,10); } catch(e) { return esc(String(d)); } };
 

@@ -41,6 +41,12 @@ def test_iter_tasks_with_location_finds_file_and_exact_line(tmp_path):
     assert inbox_task["project"] is None
     assert inbox_task["file"] == "00 Inbox/loose.md"
 
+def test_iter_tasks_with_location_drops_wikilink_from_text(tmp_path):
+    _mk_vault(tmp_path)
+    tasks = list(P.iter_tasks_with_location(tmp_path))
+    waiting_task = next(t for t in tasks if "Logo files" in t["text"])
+    assert waiting_task["text"] == "Logo files"
+
 def test_collect_state_counts_and_groups(tmp_path):
     _mk_vault(tmp_path)
     state = P.collect_state(tmp_path)

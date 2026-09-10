@@ -23,8 +23,9 @@ Two buttons, both added by the vendored `record-meeting` Obsidian plugin
 
 - 🎙️ **mic ribbon icon** ("Toggle meeting recording") — click once to start recording your
   microphone; click again to stop. Saves `Meetings/recordings/<timestamp>.wav` and opens a new
-  `Meetings/<timestamp> Meeting.md` note with `recording: "[[...]]"` pointing at it,
-  `transcription_status: pending`, and `summary_status: pending`.
+  `Meetings/<timestamp> Meeting.md` note with `recording: "[[...]]"` pointing at it and
+  `transcription_status: pending`. `summary_status: pending` is added once transcription finishes
+  (see below), not by this button.
 - 💬 **captions ribbon icon** ("Transcribe pending meeting recordings") — transcribes every pending
   recording and writes the result into that note's `## Transcript` section. It does **not** summarize
   — `## Action items` is left with a `_Pending summary — run /gtd-transcribe-meeting or

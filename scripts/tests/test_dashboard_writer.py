@@ -151,6 +151,40 @@ def test_edit_task_adds_context_when_none_present(tmp_path):
                             new_context="errands")
     assert new_line == "- [ ] No context yet #next #errands"
 
+def test_edit_task_does_not_duplicate_wikilink_text(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "Meetings").mkdir()
+    (tmp_path / "Meetings" / "2026-09-10 Sync.md").write_text(
+        "---\ntype: meeting\ndate: 2026-09-10\n---\n"
+        "# Sync\n\n## Action items\n"
+        "- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]]\n")
+    line = "- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]]"
+    new_line = W.edit_task(tmp_path, "Meetings/2026-09-10 Sync.md", line,
+                            new_text="Email the vendor", new_context="phone")
+    assert new_line == "- [ ] Email the vendor #next #phone [[2026-09-10 Sync]]"
+    # simulate a second save with the same (correct, undupped) prefilled text — must be a fixed point
+    new_line2 = W.edit_task(tmp_path, "Meetings/2026-09-10 Sync.md", new_line,
+                             new_text="Email the vendor", new_context="phone")
+    assert new_line2 == new_line
+
+def test_edit_task_fallback_text_drops_wikilink(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "Meetings").mkdir()
+    (tmp_path / "Meetings" / "2026-09-10 Sync.md").write_text(
+        "---\ntype: meeting\ndate: 2026-09-10\n---\n"
+        "# Sync\n\n## Action items\n"
+        "- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]]\n")
+    line = "- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]]"
+    # no new_text given — edit_task must fall back to the link-dropping cleaner, not BD._clean
+    new_line = W.edit_task(tmp_path, "Meetings/2026-09-10 Sync.md", line, new_due="2026-09-20")
+    assert new_line == "- [ ] Email the vendor #next #unknown [due:: 2026-09-20] [[2026-09-10 Sync]]"
+
+def test_edit_task_empty_string_context_is_a_noop(tmp_path):
+    _mk_vault(tmp_path)
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] Pick SSG #next #computer",
+                            new_context="")
+    assert new_line == "- [ ] Pick SSG #next #computer"
+
 def test_run_transcription_reports_no_pending_meetings(tmp_path):
     (tmp_path / "vendor" / "whisper-cpp").mkdir(parents=True)
     (tmp_path / "vendor" / "whisper-cpp" / "whisper-cli.exe").write_text("stub")

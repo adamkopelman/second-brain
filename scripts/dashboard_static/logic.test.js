@@ -169,7 +169,7 @@ test("taskDetailHtml shows a meeting pill and 'Meeting' label for a task with no
     project: null, meeting: "2026-09-10 Sync", context: "#unknown", due: null };
   const html = L.taskDetailHtml(t, "2026-09-10");
   assert.match(html, />Meeting<\/span>/);
-  assert.match(html, /meeting-open" data-name="2026-09-10 Sync"/);
+  assert.match(html, /meeting-open" data-file="Meetings\/2026-09-10 Sync\.md"/);
   assert.doesNotMatch(html, /none — inbox capture/);
 });
 
@@ -184,7 +184,7 @@ test("taskLine shows a meeting pill when the task has no project but has a meeti
       active_projects: [], someday_projects: [] },
     "", "2026-09-10"
   ).tasksHtml;
-  assert.match(html, /meeting-open" data-name="2026-09-10 Sync"/);
+  assert.match(html, /meeting-open" data-file="Meetings\/2026-09-10 Sync\.md"/);
 });
 
 test("renderNeedsTriage lists every #unknown-context task", () => {
@@ -193,7 +193,7 @@ test("renderNeedsTriage lists every #unknown-context task", () => {
   ] } };
   const html = L.renderNeedsTriage(state, "2026-09-10");
   assert.match(html, /Email the vendor/);
-  assert.match(html, /meeting-open" data-name="Sync"/);
+  assert.match(html, /meeting-open" data-file="Meetings\/x\.md"/);
 });
 
 test("renderNeedsTriage shows an empty state when nothing needs triage", () => {

@@ -10,6 +10,18 @@ _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_dashboard as BD
 
 
+def _clean_no_links(body: str) -> str:
+    """Like build_dashboard._clean, but drops [[wikilinks]] entirely instead of flattening
+    them to their link text. Task text here is displayed/edited standalone from its
+    project/meeting pill (see collect_state), so the link text must not also live inside it —
+    unlike build_dashboard.py's own read-only static export, which has no separate pill and
+    should keep flattening."""
+    t = BD.FIELD_RE.sub("", body)
+    t = BD.LINK_RE.sub("", t)
+    t = BD.TAG_RE.sub("", t)
+    return _re.sub(r"\s+", " ", t).strip()
+
+
 def iter_tasks_with_location(vault: Path):
     """Yield one dict per task checkbox line across all CONTENT folders (README excluded)."""
     vault = Path(vault)
@@ -32,7 +44,7 @@ def iter_tasks_with_location(vault: Path):
                     "file": rel,
                     "line_text": raw_line.rstrip(),
                     "done": m.group("m").lower() == "x",
-                    "text": BD._clean(body),
+                    "text": _clean_no_links(body),
                     "tags": tags,
                     "fields": fields,
                     "project": p.stem if d == "10 Projects" else None,

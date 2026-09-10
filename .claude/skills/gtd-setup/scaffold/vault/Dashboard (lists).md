@@ -17,7 +17,7 @@ LIST FROM "00 Inbox" WHERE file.name != "README" SORT file.ctime ASC
 TASK
 WHERE !completed AND contains(tags, "#next") AND !contains(tags, "#waiting")
 WHERE !scheduled OR scheduled <= date(today)
-GROUP BY filter(tags, (t) => t = "#computer" OR t = "#phone" OR t = "#errands" OR t = "#home" OR t = "#office" OR t = "#anywhere" OR t = "#agenda")[0] AS "Context"
+GROUP BY filter(tags, (t) => t = "#computer" OR t = "#phone" OR t = "#errands" OR t = "#home" OR t = "#office" OR t = "#anywhere" OR t = "#agenda" OR t = "#unknown")[0] AS "Context"
 SORT due ASC
 ```
 
