@@ -1,5 +1,46 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>GTD Dashboard</title></head>
-<body><div id="board">Loading…</div></body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GTD Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="board">
+  <header>
+    <h1>GTD Dashboard</h1>
+    <div class="kpis" id="kpis"></div>
+    <div class="toolbar">
+      <input id="search" type="text" placeholder="Search tasks... (press / to focus, n for new task)">
+      <button id="theme-toggle" type="button" title="Toggle light/dark">Theme</button>
+    </div>
+  </header>
+  <main class="grid">
+    <section class="card span2"><h2>Tasks</h2><div id="tasks"></div></section>
+    <section class="card"><h2>Due soon</h2><div id="due-soon"></div></section>
+    <section class="card"><h2>Waiting for</h2><div id="waiting"></div></section>
+    <section class="card"><h2>Active projects</h2><div id="projects"></div></section>
+    <section class="card"><h2>Someday / Maybe</h2><div id="someday"></div></section>
+  </main>
+</div>
+<div id="quick-add" class="modal hidden">
+  <form id="quick-add-form">
+    <input id="quick-add-text" type="text" placeholder="Task text" autocomplete="off">
+    <select id="quick-add-context">
+      <option value="computer">computer</option>
+      <option value="phone">phone</option>
+      <option value="errands">errands</option>
+      <option value="home">home</option>
+      <option value="office">office</option>
+      <option value="anywhere">anywhere</option>
+      <option value="agenda">agenda</option>
+    </select>
+    <input id="quick-add-project" type="text" placeholder="Project (optional)" autocomplete="off">
+    <button type="submit">Add task</button>
+  </form>
+</div>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
 </html>
