@@ -1,0 +1,9 @@
+{
+  "id": "record-meeting",
+  "name": "Record Meeting",
+  "version": "1.0.0",
+  "minAppVersion": "1.13.0",
+  "description": "Record a meeting to WAV, then transcribe it locally (vendored whisper.cpp) or via a remote Whisper API, extracting #next action items linked back to the recording.",
+  "author": "second-brain",
+  "isDesktopOnly": true
+}
