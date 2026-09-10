@@ -48,6 +48,8 @@ Rule of thumb: every active project has at least one #next action.
     tags: [person]
     ---
 
-## Required plugin
-Dataview powers `Dashboard.md` (Settings → Community plugins → Dataview). Or use `/gtd-dashboard`
-for a portable `dashboard.html` that needs no plugin.
+## Required plugins
+Dataview powers `Dashboard.md` (Settings → Community plugins → Dataview). QuickAdd powers the
+dashboard's Actions row (Settings → Community plugins → QuickAdd) — see
+`docs/gtd/obsidian-plugins.md` for its configured choices. Or use `/gtd-dashboard` for a portable
+`dashboard.html` that needs no plugin (note its Actions row won't be clickable there either way).

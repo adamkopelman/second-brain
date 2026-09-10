@@ -17,7 +17,7 @@ existing notes. This skill is the canonical source of the vault structure.
    It prints `created …` / `skipped …` per file and a summary.
 3. Report what was created vs already present. If everything was skipped, the vault is intact.
 4. Point the user at `30 Resources/GTD System.md` (conventions) and `docs/gtd/obsidian-plugins.md`
-   (install Dataview for the live dashboard).
+   (install Dataview and QuickAdd for the live, clickable dashboard).
 
 ## Notes
 - To rebuild a NEW vault elsewhere, copy `.claude/skills/gtd-setup/` (skill + `scaffold/` + `apply.py`)
