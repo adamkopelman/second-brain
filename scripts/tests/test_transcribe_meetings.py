@@ -100,6 +100,56 @@ def test_mark_failed_sets_status_and_appends_callout():
     assert "boom" in body
 
 
+def test_apply_transcript_preserves_yaml_list_frontmatter():
+    note_text = (
+        "---\n"
+        "type: meeting\n"
+        "attendees:\n"
+        "  - Alice\n"
+        "  - Bob\n"
+        "tags:\n"
+        "  - meeting\n"
+        "  - q3\n"
+        'recording: "[[x.wav]]"\n'
+        "transcription_status: pending\n"
+        "---\n"
+        "# Meeting\n\n## Transcript\n\n## Action items\n- [ ]  #next\n"
+    )
+    out = T.apply_transcript(note_text, "Hello world.", [], "Stem")
+    assert "  - Alice" in out
+    assert "  - Bob" in out
+    assert "  - meeting" in out
+    assert "  - q3" in out
+    fm, _ = T.parse_frontmatter(out)
+    assert fm["transcription_status"] == "done"
+    assert "transcribed" in fm
+
+
+def test_mark_failed_preserves_yaml_list_frontmatter():
+    note_text = (
+        "---\n"
+        "type: meeting\n"
+        "attendees:\n"
+        "  - Alice\n"
+        "  - Bob\n"
+        "tags:\n"
+        "  - meeting\n"
+        "  - q3\n"
+        'recording: "[[x.wav]]"\n'
+        "transcription_status: pending\n"
+        "---\n"
+        "# Meeting\n\n## Transcript\n\n## Action items\n- [ ]  #next\n"
+    )
+    out = T.mark_failed(note_text, "boom")
+    assert "  - Alice" in out
+    assert "  - Bob" in out
+    assert "  - meeting" in out
+    assert "  - q3" in out
+    fm, body = T.parse_frontmatter(out)
+    assert fm["transcription_status"] == "failed"
+    assert "boom" in body
+
+
 def test_process_marks_failed_when_recording_missing(tmp_path):
     vault = _mk_vault(tmp_path)
     (vault / "Meetings" / "recordings" / "2026-09-10_10-00-00.wav").unlink()

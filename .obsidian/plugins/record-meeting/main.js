@@ -144,10 +144,15 @@ module.exports = class RecordMeetingPlugin extends Plugin {
         const child = spawn(bin, [scriptPath, ...args], { windowsHide: true });
         let stdout = "";
         let stderr = "";
+        let spawnFailed = false;
         child.stdout.on("data", (d) => (stdout += d.toString()));
         child.stderr.on("data", (d) => (stderr += d.toString()));
-        child.on("error", () => tryNext(i + 1));
+        child.on("error", () => {
+          spawnFailed = true;
+          tryNext(i + 1);
+        });
         child.on("close", (code) => {
+          if (spawnFailed) return;
           if (code === 0) resolve(stdout);
           else reject(new Error(stderr.trim() || `exit code ${code}`));
         });

@@ -36,6 +36,41 @@ def render_frontmatter(fm: dict) -> str:
     return "\n".join(lines)
 
 
+def _split_frontmatter(text: str) -> tuple[str | None, str]:
+    """Returns (raw frontmatter block contents without the --- delimiters, or None if no
+    frontmatter, body)."""
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        return None, text
+    return m.group(1), m.group(2)
+
+
+def _join_frontmatter(raw: str | None, body: str) -> str:
+    if raw is None:
+        return body
+    return f"---\n{raw}\n---\n{body}"
+
+
+def set_frontmatter_fields(text: str, **updates: str) -> str:
+    """Set/replace the given top-level scalar frontmatter keys, preserving every other line
+    (including YAML block lists, comments, blank lines) byte-for-byte. Appends keys that don't
+    already exist."""
+    raw, body = _split_frontmatter(text)
+    lines = raw.splitlines() if raw else []
+    remaining = dict(updates)
+    out_lines = []
+    for line in lines:
+        m = FIELD_RE.match(line)
+        if m and m.group(1) in remaining:
+            out_lines.append(f"{m.group(1)}: {remaining.pop(m.group(1))}")
+        else:
+            out_lines.append(line)
+    for k, v in remaining.items():
+        out_lines.append(f"{k}: {v}")
+    new_raw = "\n".join(out_lines)
+    return _join_frontmatter(new_raw, body)
+
+
 def find_pending(vault: Path) -> list[Path]:
     meetings = vault / "Meetings"
     if not meetings.is_dir():
@@ -121,9 +156,7 @@ def _replace_section(body: str, heading: str, content: str) -> str:
 
 
 def apply_transcript(note_text: str, transcript: str, action_items: list[str], note_stem: str) -> str:
-    fm, body = parse_frontmatter(note_text)
-    fm["transcription_status"] = "done"
-    fm["transcribed"] = _dt.date.today().isoformat()
+    _, body = parse_frontmatter(note_text)
 
     transcript_block = transcript if transcript else "_No speech detected._"
     body = _replace_section(body, "## Transcript", transcript_block)
@@ -134,14 +167,21 @@ def apply_transcript(note_text: str, transcript: str, action_items: list[str], n
         items_block = "_No action items detected — review manually._"
     body = _replace_section(body, "## Action items", items_block)
 
-    return render_frontmatter(fm) + "\n" + body
+    raw, _ = _split_frontmatter(note_text)
+    joined = _join_frontmatter(raw, body)
+    return set_frontmatter_fields(
+        joined,
+        transcription_status="done",
+        transcribed=_dt.date.today().isoformat(),
+    )
 
 
 def mark_failed(note_text: str, reason: str) -> str:
-    fm, body = parse_frontmatter(note_text)
-    fm["transcription_status"] = "failed"
+    _, body = parse_frontmatter(note_text)
     body += f"\n> [!fail] Transcription failed: {reason}\n"
-    return render_frontmatter(fm) + "\n" + body
+    raw, _ = _split_frontmatter(note_text)
+    joined = _join_frontmatter(raw, body)
+    return set_frontmatter_fields(joined, transcription_status="failed")
 
 
 def process(vault: Path, whisper_bin: Path, model: Path, remote_url: str | None,
