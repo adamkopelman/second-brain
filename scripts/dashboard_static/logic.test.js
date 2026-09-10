@@ -98,3 +98,60 @@ test("render marks an overdue due date distinctly from a future one", () => {
   assert.match(out.dueSoonHtml, /class="due overdue"/);
   assert.match(out.dueSoonHtml, /class="due">/);
 });
+
+test("tasksForProject collects a project's tasks from every context plus waiting, deduplicated", () => {
+  const state = {
+    tasks_by_context: {
+      "#computer": [
+        { text: "A", file: "f.md", line_text: "a", project: "Website Redesign" },
+        { text: "B", file: "f.md", line_text: "b", project: "Plan Family Trip" },
+      ],
+      "#phone": [
+        { text: "A", file: "f.md", line_text: "a", project: "Website Redesign" }, // duplicate of A
+        { text: "C", file: "f.md", line_text: "c", project: "Website Redesign" },
+      ],
+    },
+    waiting: [{ text: "D", file: "f.md", line_text: "d", project: "Website Redesign" }],
+  };
+  const out = L.tasksForProject(state, "Website Redesign");
+  assert.equal(out.length, 3); // A, C, D — B excluded (different project), A not duplicated
+  assert.deepEqual(out.map((t) => t.text).sort(), ["A", "C", "D"]);
+});
+
+test("taskDetailHtml renders editable text/due fields and escapes content", () => {
+  const t = { text: '<b>x</b>', file: "f.md", line_text: "- [ ] <b>x</b> #next #computer [due:: 2026-09-01]",
+    project: "Website Redesign", context: "#computer", due: "2026-09-01" };
+  const html = L.taskDetailHtml(t, "2026-09-10");
+  assert.match(html, /id="detail-text" value="&lt;b&gt;x&lt;\/b&gt;"/);
+  assert.match(html, /id="detail-due" value="2026-09-01"/);
+  assert.match(html, /class="pill overdue">overdue/); // 2026-09-01 is before 2026-09-10
+  assert.match(html, /class="detail-save"/);
+  assert.match(html, /class="detail-mark-done"/);
+  assert.match(html, /class="detail-delete"/);
+  assert.match(html, /proj-open" data-name="Website Redesign"/);
+});
+
+test("taskDetailHtml shows 'none' for an inbox task with no project", () => {
+  const t = { text: "x", file: "00 Inbox/a.md", line_text: "- [ ] x", project: null, context: null, due: null };
+  const html = L.taskDetailHtml(t, "2026-09-10");
+  assert.match(html, /none — inbox capture/);
+  assert.doesNotMatch(html, /class="pill overdue"/);
+});
+
+test("projectDetailHtml shows outcome, review pill, and its open tasks", () => {
+  const p = { name: "Website Redesign", file: "10 Projects/Website Redesign.md",
+    review: "2026-09-15", review_overdue: false, outcome: "Ship the new site." };
+  const tasks = [{ text: "Finalize wireframe", file: "f.md", line_text: "x", project: "Website Redesign" }];
+  const html = L.projectDetailHtml(p, tasks, "2026-09-10");
+  assert.match(html, /Ship the new site\./);
+  assert.match(html, /Finalize wireframe/);
+  assert.doesNotMatch(html, /No outcome set yet/);
+  assert.match(html, /Open full note in Obsidian/);
+});
+
+test("projectDetailHtml shows placeholders for a project with no outcome and no open tasks", () => {
+  const p = { name: "Learn Spanish", file: "10 Projects/Learn Spanish.md", review: null, review_overdue: false, outcome: null };
+  const html = L.projectDetailHtml(p, [], "2026-09-10");
+  assert.match(html, /No outcome set yet\./);
+  assert.match(html, /No open tasks\./);
+});
