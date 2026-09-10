@@ -73,3 +73,76 @@ def test_get_unknown_path_returns_404(tmp_path):
             assert e.code == 404
     finally:
         server.shutdown()
+
+
+from urllib.error import HTTPError
+
+
+def _post(server, path, payload):
+    body = json.dumps(payload).encode("utf-8")
+    req = request.Request(f"http://127.0.0.1:{server.server_port}{path}", data=body,
+                           method="POST", headers={"Content-Type": "application/json"})
+    return request.urlopen(req)
+
+
+def test_complete_task_writes_the_file(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with _post(server, "/api/complete-task",
+                    {"file": "10 Projects/P.md", "line_text": "- [ ] Pick SSG #next #computer"}) as r:
+            assert r.status == 200
+        text = (tmp_path / "10 Projects" / "P.md").read_text()
+        assert "- [x] Pick SSG #next #computer" in text
+    finally:
+        server.shutdown()
+
+
+def test_complete_task_conflict_when_line_missing(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        try:
+            _post(server, "/api/complete-task", {"file": "10 Projects/P.md", "line_text": "- [ ] nope"})
+            assert False, "expected HTTPError"
+        except HTTPError as e:
+            assert e.code == 409
+    finally:
+        server.shutdown()
+
+
+def test_new_task_without_project_creates_inbox_file(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with _post(server, "/api/new-task", {"text": "Call dentist", "context": "phone"}) as r:
+            data = json.loads(r.read())
+        assert data["file"].startswith("00 Inbox/")
+        assert (tmp_path / data["file"]).is_file()
+    finally:
+        server.shutdown()
+
+
+def test_new_project_creates_from_template(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with _post(server, "/api/new-project", {"title": "New Idea"}) as r:
+            data = json.loads(r.read())
+        assert data["file"] == "10 Projects/New Idea.md"
+        assert (tmp_path / "10 Projects" / "New Idea.md").is_file()
+    finally:
+        server.shutdown()
+
+
+def test_delete_task_missing_required_field_is_bad_request(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        try:
+            _post(server, "/api/delete-task", {"file": "10 Projects/P.md"})  # no line_text
+            assert False, "expected HTTPError"
+        except HTTPError as e:
+            assert e.code == 400
+    finally:
+        server.shutdown()
