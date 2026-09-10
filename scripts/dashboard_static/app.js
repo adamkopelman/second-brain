@@ -5,7 +5,10 @@
   var query = "";
 
   function today() {
-    return new Date().toISOString().slice(0, 10);
+    var d = new Date();
+    var mm = String(d.getMonth() + 1).padStart(2, "0");
+    var dd = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + mm + "-" + dd;
   }
 
   function applyTheme(theme) {
@@ -15,6 +18,8 @@
 
   function renderAll() {
     if (!state) return;
+    var active = document.activeElement;
+    if (active && active.classList && active.classList.contains("task-text")) return;
     var out = DashboardLogic.render(state, query, today());
     document.getElementById("kpis").innerHTML =
       ["inbox", "tasks", "waiting", "due"].map(function (k) {
@@ -51,20 +56,26 @@
     var file = li.getAttribute("data-file");
     var line = li.getAttribute("data-line");
     if (e.target.classList.contains("task-check")) {
-      post("/api/complete-task", { file: file, line_text: line }).then(refresh);
+      post("/api/complete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
     } else if (e.target.classList.contains("task-delete")) {
-      post("/api/delete-task", { file: file, line_text: line }).then(refresh);
+      post("/api/delete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
+    }
+  });
+
+  document.addEventListener("focusin", function (e) {
+    if (e.target.classList && e.target.classList.contains("task-text")) {
+      e.target.dataset.original = e.target.textContent.trim();
     }
   });
 
   document.addEventListener("focusout", function (e) {
     if (!e.target.classList || !e.target.classList.contains("task-text")) return;
+    var newText = e.target.textContent.trim();
+    if (!newText || newText === e.target.dataset.original) return;
     var li = e.target.closest(".task");
     var file = li.getAttribute("data-file");
     var line = li.getAttribute("data-line");
-    var newText = e.target.textContent.trim();
-    if (!newText) return;
-    post("/api/edit-task", { file: file, line_text: line, new_text: newText }).then(refresh);
+    post("/api/edit-task", { file: file, line_text: line, new_text: newText }).then(refresh).catch(refresh);
   });
 
   document.getElementById("search").addEventListener("input", function (e) {
@@ -79,6 +90,10 @@
 
   var modal = document.getElementById("quick-add");
   document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      modal.classList.add("hidden");
+      return;
+    }
     var tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
     if (e.key === "/") {
@@ -88,8 +103,6 @@
       e.preventDefault();
       modal.classList.remove("hidden");
       document.getElementById("quick-add-text").focus();
-    } else if (e.key === "Escape") {
-      modal.classList.add("hidden");
     }
   });
 
@@ -103,6 +116,8 @@
       document.getElementById("quick-add-text").value = "";
       document.getElementById("quick-add-project").value = "";
       modal.classList.add("hidden");
+      refresh();
+    }).catch(function () {
       refresh();
     });
   });

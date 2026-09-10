@@ -110,3 +110,23 @@ def test_create_project_refuses_to_overwrite(tmp_path):
     W.create_project(tmp_path, "New Idea")
     with pytest.raises(FileExistsError):
         W.create_project(tmp_path, "New Idea")
+
+def test_complete_task_refuses_path_escaping_vault(tmp_path):
+    _mk_vault(tmp_path)
+    outside = tmp_path.parent / "outside.md"
+    outside.write_text("- [ ] victim line\n")
+    with pytest.raises(W.PathEscapesVaultError):
+        W.complete_task(tmp_path, "../outside.md", "- [ ] victim line")
+    assert "- [ ] victim line" in outside.read_text()  # untouched
+
+def test_create_project_refuses_path_escaping_vault(tmp_path):
+    _mk_vault(tmp_path)
+    with pytest.raises(W.PathEscapesVaultError):
+        W.create_project(tmp_path, "../../outside")
+
+def test_edit_task_on_non_checkbox_line_raises(tmp_path):
+    _mk_vault(tmp_path)
+    p = tmp_path / "10 Projects" / "P.md"
+    p.write_text(p.read_text() + "# Not a task\n")
+    with pytest.raises(W.LineNotFoundError):
+        W.edit_task(tmp_path, "10 Projects/P.md", "# Not a task", new_text="x")

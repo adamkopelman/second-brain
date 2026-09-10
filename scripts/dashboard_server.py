@@ -61,6 +61,18 @@ def make_handler(vault: Path):
 
         def do_POST(self):
             path = urlparse(self.path).path
+            origin = self.headers.get("Origin")
+            if origin and urlparse(origin).hostname not in ("127.0.0.1", "localhost"):
+                self._send_json({"error": "cross-origin request refused"}, 403)
+                return
+            host_header = (self.headers.get("Host") or "").split(":")[0]
+            if host_header and host_header not in ("127.0.0.1", "localhost"):
+                self._send_json({"error": "invalid host"}, 403)
+                return
+            content_type = self.headers.get("Content-Type", "")
+            if not content_type.startswith("application/json"):
+                self._send_json({"error": "expected application/json"}, 415)
+                return
             try:
                 data = self._read_json()
                 if path == "/api/complete-task":
@@ -86,8 +98,12 @@ def make_handler(vault: Path):
                 self._send_json({"error": str(e)}, 409)
             except FileNotFoundError as e:
                 self._send_json({"error": str(e)}, 404)
+            except W.PathEscapesVaultError as e:
+                self._send_json({"error": str(e)}, 400)
             except KeyError as e:
                 self._send_json({"error": f"missing field: {e}"}, 400)
+            except Exception as e:
+                self._send_json({"error": "internal error: " + str(e)}, 500)
 
     return Handler
 

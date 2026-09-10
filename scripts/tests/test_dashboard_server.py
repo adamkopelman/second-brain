@@ -146,3 +146,49 @@ def test_delete_task_missing_required_field_is_bad_request(tmp_path):
             assert e.code == 400
     finally:
         server.shutdown()
+
+
+def test_complete_task_rejects_path_outside_vault(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        try:
+            _post(server, "/api/complete-task", {"file": "../outside.md", "line_text": "x"})
+            assert False, "expected HTTPError"
+        except HTTPError as e:
+            assert e.code == 400
+    finally:
+        server.shutdown()
+
+
+def test_post_with_non_json_content_type_is_rejected(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        body = json.dumps({"file": "10 Projects/P.md", "line_text": "- [ ] Pick SSG #next #computer"}).encode()
+        req = request.Request(f"http://127.0.0.1:{server.server_port}/api/complete-task",
+                               data=body, method="POST", headers={"Content-Type": "text/plain"})
+        try:
+            request.urlopen(req)
+            assert False, "expected HTTPError"
+        except HTTPError as e:
+            assert e.code == 415
+    finally:
+        server.shutdown()
+
+
+def test_post_with_cross_origin_header_is_rejected(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        body = json.dumps({"file": "10 Projects/P.md", "line_text": "- [ ] Pick SSG #next #computer"}).encode()
+        req = request.Request(f"http://127.0.0.1:{server.server_port}/api/complete-task",
+                               data=body, method="POST",
+                               headers={"Content-Type": "application/json", "Origin": "https://evil.example"})
+        try:
+            request.urlopen(req)
+            assert False, "expected HTTPError"
+        except HTTPError as e:
+            assert e.code == 403
+    finally:
+        server.shutdown()
