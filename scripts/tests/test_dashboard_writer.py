@@ -130,3 +130,33 @@ def test_edit_task_on_non_checkbox_line_raises(tmp_path):
     p.write_text(p.read_text() + "# Not a task\n")
     with pytest.raises(W.LineNotFoundError):
         W.edit_task(tmp_path, "10 Projects/P.md", "# Not a task", new_text="x")
+
+def test_edit_task_replaces_context_tag(tmp_path):
+    _mk_vault(tmp_path)
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] Pick SSG #next #computer",
+                            new_context="phone")
+    assert new_line == "- [ ] Pick SSG #next #phone"
+
+def test_edit_task_sets_unknown_context(tmp_path):
+    _mk_vault(tmp_path)
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] Buy domain #next #computer",
+                            new_context="unknown")
+    assert new_line == "- [ ] Buy domain #next #unknown"
+
+def test_edit_task_adds_context_when_none_present(tmp_path):
+    _mk_vault(tmp_path)
+    p = tmp_path / "10 Projects" / "P.md"
+    p.write_text(p.read_text() + "- [ ] No context yet #next\n")
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] No context yet #next",
+                            new_context="errands")
+    assert new_line == "- [ ] No context yet #next #errands"
+
+def test_run_transcription_reports_no_pending_meetings(tmp_path):
+    (tmp_path / "vendor" / "whisper-cpp").mkdir(parents=True)
+    (tmp_path / "vendor" / "whisper-cpp" / "whisper-cli.exe").write_text("stub")
+    out = W.run_transcription(tmp_path)
+    assert out == "No pending meeting recordings."
+
+def test_run_transcription_raises_on_failure(tmp_path):
+    with pytest.raises(RuntimeError):
+        W.run_transcription(tmp_path)  # no vendored whisper binary present
