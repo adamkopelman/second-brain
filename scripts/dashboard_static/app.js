@@ -89,9 +89,25 @@
   });
 
   var modal = document.getElementById("quick-add");
+
+  function openQuickAdd() {
+    modal.classList.remove("hidden");
+    document.getElementById("quick-add-text").focus();
+  }
+
+  function closeQuickAdd() {
+    modal.classList.add("hidden");
+  }
+
+  document.getElementById("new-task-btn").addEventListener("click", openQuickAdd);
+  document.getElementById("quick-add-close").addEventListener("click", closeQuickAdd);
+  modal.addEventListener("click", function (e) {
+    if (e.target === modal) closeQuickAdd(); // click on the backdrop, not the form
+  });
+
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
-      modal.classList.add("hidden");
+      closeQuickAdd();
       return;
     }
     var tag = (e.target.tagName || "").toLowerCase();
@@ -101,8 +117,7 @@
       document.getElementById("search").focus();
     } else if (e.key === "n") {
       e.preventDefault();
-      modal.classList.remove("hidden");
-      document.getElementById("quick-add-text").focus();
+      openQuickAdd();
     }
   });
 
@@ -115,7 +130,7 @@
     post("/api/new-task", { text: text, context: context, project: project }).then(function () {
       document.getElementById("quick-add-text").value = "";
       document.getElementById("quick-add-project").value = "";
-      modal.classList.add("hidden");
+      closeQuickAdd();
       refresh();
     }).catch(function () {
       refresh();
