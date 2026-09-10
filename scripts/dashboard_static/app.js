@@ -28,6 +28,8 @@
     document.getElementById("waiting").innerHTML = out.waitingHtml;
     document.getElementById("projects").innerHTML = out.projectsHtml;
     document.getElementById("someday").innerHTML = out.somedayHtml;
+    document.getElementById("needs-triage").innerHTML = out.needsTriageHtml;
+    document.getElementById("meetings").innerHTML = out.meetingsHtml;
   }
 
   function refresh() {
@@ -106,12 +108,23 @@
       return;
     }
 
+    var meetingTrigger = e.target.closest(".meeting-open");
+    if (meetingTrigger) {
+      e.preventDefault();
+      var meetingName = meetingTrigger.getAttribute("data-name");
+      var meeting = (state.meetings || []).filter(function (m) { return m.name === meetingName; })[0];
+      if (meeting) window.open("obsidian://open?path=" + encodeURIComponent(meeting.file));
+      return;
+    }
+
     var saveBtn = e.target.closest(".detail-save");
     if (saveBtn) {
       var newText = document.getElementById("detail-text").value.trim();
       var newDue = document.getElementById("detail-due").value;
+      var ctxEl = document.getElementById("detail-context");
       var editBody = { file: saveBtn.getAttribute("data-file"), line_text: saveBtn.getAttribute("data-line"), new_text: newText };
       if (newDue) editBody.new_due = newDue;
+      if (ctxEl) editBody.new_context = ctxEl.value;
       post("/api/edit-task", editBody).then(function () { closeDetailModal(); refresh(); })
         .catch(function () { closeDetailModal(); refresh(); });
       return;
@@ -150,6 +163,21 @@
   document.getElementById("theme-toggle").addEventListener("click", function () {
     var current = document.documentElement.getAttribute("data-theme") || "light";
     applyTheme(current === "light" ? "dark" : "light");
+  });
+
+  document.getElementById("transcribe-btn").addEventListener("click", function () {
+    var btn = document.getElementById("transcribe-btn");
+    btn.disabled = true;
+    btn.textContent = "Transcribing…";
+    post("/api/transcribe", {}).then(function () {
+      btn.disabled = false;
+      btn.textContent = "Transcribe pending";
+      refresh();
+    }).catch(function () {
+      btn.disabled = false;
+      btn.textContent = "Transcribe pending";
+      refresh();
+    });
   });
 
   var modal = document.getElementById("quick-add");
