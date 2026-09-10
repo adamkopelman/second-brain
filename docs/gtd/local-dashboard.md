@@ -26,6 +26,9 @@ it, and there's no login because there's nothing to log into.
   inserts under that project's `## Next actions` heading if you do — matching `/gtd-capture`'s and
   QuickAdd's conventions.
 - Auto-refreshes every ~4 seconds, so edits made directly in Obsidian show up here too.
+- Shows recent meetings (transcription/summary status at a glance) with a "Transcribe pending" button,
+  and a "Needs triage" card for any task whose context came back `#unknown` from meeting summarization
+  — resolve one by opening its detail overlay and picking a real context from the dropdown.
 
 ## Safety model
 
