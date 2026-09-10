@@ -5,7 +5,7 @@ import argparse, datetime as _dt, html, re
 from pathlib import Path
 
 CONTENT = ["00 Inbox", "10 Projects", "20 Areas", "Journal", "People", "Meetings"]
-CONTEXTS = ["#computer", "#phone", "#errands", "#home", "#office", "#anywhere", "#agenda"]
+CONTEXTS = ["#computer", "#phone", "#errands", "#home", "#office", "#anywhere", "#agenda", "#unknown"]
 TASK_RE = re.compile(r"^\s*-\s*\[(?P<m>[ xX])\]\s*(?P<b>.*)$")
 TAG_RE = re.compile(r"(?<!\w)#([A-Za-z][A-Za-z0-9_-]*)")
 FIELD_RE = re.compile(r"\[([a-z][a-z0-9_-]*)::\s*([^\]]*)\]")

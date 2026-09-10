@@ -80,3 +80,41 @@ def test_collect_state_extracts_project_outcome(tmp_path):
     assert filled["outcome"] == "New site launched with updated branding."
     blank = next(p for p in state["someday_projects"] if p["name"] == "Blank")
     assert blank["outcome"] is None
+
+def test_iter_tasks_with_location_tags_meeting_source(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "Meetings").mkdir()
+    (tmp_path / "Meetings" / "2026-09-10 Sync.md").write_text(
+        "---\ntype: meeting\ndate: 2026-09-10\ntranscription_status: done\nsummary_status: done\n---\n"
+        "# Sync\n\n## Action items\n- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]]\n")
+    tasks = list(P.iter_tasks_with_location(tmp_path))
+    from_meeting = next(t for t in tasks if "Email the vendor" in t["text"])
+    assert from_meeting["meeting"] == "2026-09-10 Sync"
+    assert from_meeting["project"] is None
+    wireframe = next(t for t in tasks if "wireframe" in t["text"])
+    assert wireframe["meeting"] is None
+
+def test_collect_state_threads_meeting_field_and_unknown_context(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "Meetings").mkdir()
+    (tmp_path / "Meetings" / "2026-09-10 Sync.md").write_text(
+        "---\ntype: meeting\ndate: 2026-09-10\ntranscription_status: done\nsummary_status: done\n---\n"
+        "# Sync\n\n## Action items\n- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]]\n")
+    state = P.collect_state(tmp_path)
+    assert len(state["tasks_by_context"]["#unknown"]) == 1
+    task = state["tasks_by_context"]["#unknown"][0]
+    assert task["meeting"] == "2026-09-10 Sync"
+    assert task["project"] is None
+
+def test_collect_state_lists_recent_meetings_newest_first_capped(tmp_path):
+    (tmp_path / "Meetings").mkdir(parents=True)
+    (tmp_path / "Meetings" / "README.md").write_text("# Meetings\n")
+    for i in range(10):
+        (tmp_path / "Meetings" / f"m{i}.md").write_text(
+            f"---\ntype: meeting\ndate: 2026-09-{i+1:02d}\n"
+            f"transcription_status: done\nsummary_status: pending\n---\n# m{i}\n")
+    state = P.collect_state(tmp_path)
+    assert len(state["meetings"]) == 8
+    assert state["meetings"][0]["date"] == "2026-09-10"
+    assert state["meetings"][0]["transcription_status"] == "done"
+    assert state["meetings"][0]["summary_status"] == "pending"
