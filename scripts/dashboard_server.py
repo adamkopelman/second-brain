@@ -59,6 +59,36 @@ def make_handler(vault: Path):
                 return
             self._send_json({"error": "not found"}, 404)
 
+        def do_POST(self):
+            path = urlparse(self.path).path
+            try:
+                data = self._read_json()
+                if path == "/api/complete-task":
+                    W.complete_task(vault, data["file"], data["line_text"])
+                    self._send_json({"ok": True})
+                elif path == "/api/delete-task":
+                    W.delete_task(vault, data["file"], data["line_text"])
+                    self._send_json({"ok": True})
+                elif path == "/api/edit-task":
+                    new_line = W.edit_task(vault, data["file"], data["line_text"],
+                                            data.get("new_text"), data.get("new_due"))
+                    self._send_json({"ok": True, "line_text": new_line})
+                elif path == "/api/new-task":
+                    result = W.create_task(vault, data["text"], data.get("context", "anywhere"),
+                                            data.get("project"))
+                    self._send_json({"ok": True, **result})
+                elif path == "/api/new-project":
+                    rel = W.create_project(vault, data["title"])
+                    self._send_json({"ok": True, "file": rel})
+                else:
+                    self._send_json({"error": "not found"}, 404)
+            except (W.LineNotFoundError, W.AmbiguousLineError, FileExistsError) as e:
+                self._send_json({"error": str(e)}, 409)
+            except FileNotFoundError as e:
+                self._send_json({"error": str(e)}, 404)
+            except KeyError as e:
+                self._send_json({"error": f"missing field: {e}"}, 400)
+
     return Handler
 
 
