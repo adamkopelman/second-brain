@@ -35,6 +35,12 @@ Settings → Community plugins → Browse → "QuickAdd", then recreate the thre
 is a plain-Dataview fallback if you prefer tables to cards.
 
 ## Optional
+### Record Meeting — meeting recording + transcription
+Vendored and pre-enabled (`.obsidian/plugins/record-meeting`, `.obsidian/community-plugins.json`).
+Adds a mic ribbon button (record → WAV) and a captions ribbon button (transcribe pending recordings
+via the vendored, fully offline `whisper.cpp` in `vendor/whisper-cpp/`). See
+`docs/gtd/meeting-recording.md`. Desktop only (uses Node `child_process` + the local microphone).
+
 - **Smart Second Brain** (`obsidian-smart2brain`) — semantic / RAG search + an AI assistant that
   knows your notes. Complements Dataview: Dataview does *structured* queries (tags, fields),
   Smart Second Brain does *fuzzy/semantic* retrieval ("what did I note about pricing?"). Install via

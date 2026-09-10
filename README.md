@@ -11,6 +11,7 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 | GTD skills | `/gtd-capture`, `/gtd-process-inbox`, `/gtd-next-actions`, `/gtd-weekly-review`, `/gtd-status`, `/gtd-dashboard`. |
 | Outlook | `/gtd-outlook` pulls email/calendar via the `outlook-mcp-rs` MCP server. |
 | Live dashboard | `Dashboard.md` — a visual KPI + card grid (Dataview JS) with a clickable Actions row (QuickAdd) to capture a task, add a next action to a project, or start a new project; `Dashboard (lists).md` is a no-JS fallback. |
+| Meeting recording | 🎙️/💬 ribbon buttons (`record-meeting` plugin) to record a meeting to WAV and transcribe it — fully offline, vendored `whisper.cpp`. See `docs/gtd/meeting-recording.md`. |
 | Home board | `Home.canvas` — a spatial launchpad (Obsidian Canvas) embedding the dashboard + link-cards. |
 | Portable dashboard | `dashboard.html` — self-contained, any browser (`/gtd-dashboard`). |
 | Portability | Skills in `.claude/skills/` (Claude Code, opencode, Claudian); MCP in `.mcp.json` + `opencode.json`; see `AGENTS.md`. |
