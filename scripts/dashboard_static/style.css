@@ -25,6 +25,11 @@ h1 { font-size: 1.1rem; margin: 0 0 8px; }
   flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--card-bg); color: var(--text);
 }
+.toolbar button {
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
+  border-radius: 8px; padding: 6px 12px; font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+}
+#new-task-btn { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .grid {
   flex: 1 1 auto; min-height: 0; display: grid;
   grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 1fr); gap: 10px;
@@ -53,4 +58,20 @@ h1 { font-size: 1.1rem; margin: 0 0 8px; }
 .empty { color: var(--muted); font-style: italic; font-size: 0.85rem; }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; }
 .modal.hidden { display: none; }
-.modal form { background: var(--card-bg); border-radius: 10px; padding: 16px; display: flex; gap: 8px; }
+.modal form {
+  background: var(--card-bg); border-radius: 10px; padding: 16px;
+  display: flex; flex-direction: column; gap: 8px; min-width: 260px;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.modal-head h2 { margin: 0; font-size: 1rem; }
+#quick-add-close {
+  border: none; background: none; color: var(--muted); font-size: 1.2rem;
+  line-height: 1; cursor: pointer; padding: 2px 6px;
+}
+.modal input, .modal select {
+  padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
+.modal button[type="submit"] {
+  border: none; background: var(--accent); color: #fff; border-radius: 6px;
+  padding: 8px 14px; font-size: 0.9rem; cursor: pointer; font-weight: 600;
+}

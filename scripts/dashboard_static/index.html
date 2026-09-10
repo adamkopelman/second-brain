@@ -12,7 +12,8 @@
     <h1>GTD Dashboard</h1>
     <div class="kpis" id="kpis"></div>
     <div class="toolbar">
-      <input id="search" type="text" placeholder="Search tasks... (press / to focus, n for new task)">
+      <input id="search" type="text" placeholder="Search tasks... (press / to focus)">
+      <button id="new-task-btn" type="button" title="New task (n)">+ New task</button>
       <button id="theme-toggle" type="button" title="Toggle light/dark">Theme</button>
     </div>
   </header>
@@ -26,6 +27,10 @@
 </div>
 <div id="quick-add" class="modal hidden">
   <form id="quick-add-form">
+    <div class="modal-head">
+      <h2>New task</h2>
+      <button id="quick-add-close" type="button" title="Close" aria-label="Close">×</button>
+    </div>
     <input id="quick-add-text" type="text" placeholder="Task text" autocomplete="off">
     <select id="quick-add-context">
       <option value="computer">computer</option>
