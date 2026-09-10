@@ -4,6 +4,7 @@ date: {{date:YYYY-MM-DD}}
 attendees: 
 recording: 
 transcription_status: 
+summary_status: 
 ---
 
 # {{title}}
