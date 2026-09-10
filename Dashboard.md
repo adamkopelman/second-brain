@@ -101,6 +101,22 @@ try {
   const sLi = someday.slice(0,15).map(p => `<li><a class="internal-link" href="${esc(p.file.name)}">${esc(p.file.name)}</a></li>`).join("");
   html += `<div class="gtd-card"><h3>💤 Someday / Maybe · ${someday.length}</h3>${sLi ? `<ul class="gtd-list">${sLi}</ul>` : `<div class="gtd-empty">Nothing parked.</div>`}</div>`;
 
+  // ---- Shortcuts (static reference — the repo's slash commands) ----
+  const SHORTCUTS = [
+    ["/gtd-capture", "Quickly capture a thought/task to the inbox"],
+    ["/gtd-process-inbox", "Clarify and file everything in the inbox"],
+    ["/gtd-next-actions", "What can I do right now, by context/energy"],
+    ["/gtd-status", "Brief status: inbox size, projects, reviews due"],
+    ["/gtd-weekly-review", "Run the full weekly review ritual"],
+    ["/gtd-maintain", "Health check: stuck projects, stale waiting-for"],
+    ["/gtd-outlook", "Pull flagged email / calendar into the system"],
+    ["/gtd-dashboard", "Build a portable dashboard.html snapshot"],
+    ["/gtd-setup", "Scaffold or repair the vault structure"],
+  ];
+  const shLi = SHORTCUTS.map(([cmd, desc]) => `<li><code>${esc(cmd)}</code> — ${esc(desc)}</li>`).join("");
+  html += `<div class="gtd-card gtd-span2"><h3>⌨️ Shortcuts</h3><ul class="gtd-list">${shLi}` +
+    `<li><code>Ctrl/Cmd+Shift+T</code> — New next action, from anywhere (QuickAdd hotkey)</li></ul></div>`;
+
   html += `</div>`;
   const root = dv.el("div", "", { cls: "gtd-root" });
   root.innerHTML = html;
