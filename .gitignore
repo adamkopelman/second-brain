@@ -7,6 +7,9 @@
 # Generated
 dashboard.html
 
+# Meeting recordings are personal audio — keep the code, not the audio
+Meetings/recordings/*.wav
+
 # OS / Python
 .DS_Store
 Thumbs.db

@@ -2,6 +2,8 @@
 type: meeting
 date: {{date:YYYY-MM-DD}}
 attendees: 
+recording: 
+transcription_status: 
 ---
 
 # {{title}}
@@ -12,6 +14,8 @@ attendees:
 ## Notes
 
 ## Decisions
+
+## Transcript
 
 ## Action items
 - [ ]  #next
