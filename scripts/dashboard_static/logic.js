@@ -34,7 +34,7 @@
     var proj = t.project
       ? '<span class="proj proj-open" data-name="' + escapeHtml(t.project) + '">' + escapeHtml(t.project) + "</span>"
       : (t.meeting
-          ? '<span class="meeting meeting-open" data-name="' + escapeHtml(t.meeting) + '">' + escapeHtml(t.meeting) + "</span>"
+          ? '<span class="meeting meeting-open" data-file="' + escapeHtml(t.file) + '">' + escapeHtml(t.meeting) + "</span>"
           : "");
     return '<li class="task" data-file="' + escapeHtml(t.file) + '" data-line="' +
       escapeHtml(t.line_text) + '">' +
@@ -102,7 +102,7 @@
     var sourceValue = t.project
       ? '<a href="#" class="proj-open" data-name="' + escapeHtml(t.project) + '">' + escapeHtml(t.project) + "</a>"
       : (t.meeting
-          ? '<span class="meeting meeting-open" data-name="' + escapeHtml(t.meeting) + '">' + escapeHtml(t.meeting) + "</span>"
+          ? '<span class="meeting meeting-open" data-file="' + escapeHtml(t.file) + '">' + escapeHtml(t.meeting) + "</span>"
           : '<span class="empty">none — inbox capture</span>');
     var ctx = (t.context || "#anywhere").replace(/^#/, "");
     var ctxOptions = ["computer", "phone", "errands", "home", "office", "anywhere", "agenda", "unknown"]

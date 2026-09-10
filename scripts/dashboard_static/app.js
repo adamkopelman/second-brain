@@ -111,9 +111,8 @@
     var meetingTrigger = e.target.closest(".meeting-open");
     if (meetingTrigger) {
       e.preventDefault();
-      var meetingName = meetingTrigger.getAttribute("data-name");
-      var meeting = (state.meetings || []).filter(function (m) { return m.name === meetingName; })[0];
-      if (meeting) window.open("obsidian://open?path=" + encodeURIComponent(meeting.file));
+      var meetingFile = meetingTrigger.getAttribute("data-file");
+      if (meetingFile) window.open("obsidian://open?path=" + encodeURIComponent(meetingFile));
       return;
     }
 

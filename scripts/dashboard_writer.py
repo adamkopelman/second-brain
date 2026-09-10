@@ -9,6 +9,7 @@ from pathlib import Path
 
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_dashboard as BD
+import dashboard_parser as DP
 
 
 class LineNotFoundError(Exception):
@@ -80,12 +81,12 @@ def edit_task(vault: Path, file: str, line_text: str,
     tags = BD.TAG_RE.findall(body)
     fields = dict(BD.FIELD_RE.findall(body))
     links = BD.LINK_RE.findall(body)
-    text = new_text.strip() if new_text is not None else BD._clean(body)
+    text = new_text.strip() if new_text is not None else DP._clean_no_links(body)
 
     if new_due is not None:
         fields["due"] = new_due
 
-    if new_context is not None:
+    if new_context:
         ctx_bare = new_context.lstrip("#")
         tags = [t for t in tags if f"#{t}" not in BD.CONTEXTS] + [ctx_bare]
 

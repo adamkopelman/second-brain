@@ -25,9 +25,11 @@ Checkboxes inside project/daily notes, with tags + inline fields:
     - [ ] Waiting on Sam for figures #waiting [[Sam Rivera]] [since:: 2026-09-08]
     - [ ] Someday: learn to sail #someday
 
-Contexts (one per action): #computer #phone #errands #home #office #anywhere #agenda (pair #agenda
-with [[Person]]). Status: #next (ready now — shown on dashboard), #waiting (delegated; + [[Person]] +
-[since:: DATE]), #someday. Fields: [due:: DATE], [scheduled:: DATE] (tickler), [since:: DATE].
+Contexts (one per action): #computer #phone #errands #home #office #anywhere #agenda #unknown (pair
+#agenda with [[Person]]; #unknown is auto-assigned when meeting summarization can't infer a context —
+resolve it via the local dashboard's "Needs triage" card). Status: #next (ready now — shown on
+dashboard), #waiting (delegated; + [[Person]] + [since:: DATE]), #someday. Fields: [due:: DATE],
+[scheduled:: DATE] (tickler), [since:: DATE].
 
 Rule of thumb: every active project has at least one #next action.
 
