@@ -33,7 +33,9 @@
       : "";
     var proj = t.project
       ? '<span class="proj proj-open" data-name="' + escapeHtml(t.project) + '">' + escapeHtml(t.project) + "</span>"
-      : "";
+      : (t.meeting
+          ? '<span class="meeting meeting-open" data-name="' + escapeHtml(t.meeting) + '">' + escapeHtml(t.meeting) + "</span>"
+          : "");
     return '<li class="task" data-file="' + escapeHtml(t.file) + '" data-line="' +
       escapeHtml(t.line_text) + '">' +
       '<input type="checkbox" class="task-check">' +
@@ -96,18 +98,26 @@
 
   function taskDetailHtml(t, today) {
     var overdue = t.due && isOverdue(t.due, today);
+    var sourceLabel = (!t.project && t.meeting) ? "Meeting" : "Project";
+    var sourceValue = t.project
+      ? '<a href="#" class="proj-open" data-name="' + escapeHtml(t.project) + '">' + escapeHtml(t.project) + "</a>"
+      : (t.meeting
+          ? '<span class="meeting meeting-open" data-name="' + escapeHtml(t.meeting) + '">' + escapeHtml(t.meeting) + "</span>"
+          : '<span class="empty">none — inbox capture</span>');
+    var ctx = (t.context || "#anywhere").replace(/^#/, "");
+    var ctxOptions = ["computer", "phone", "errands", "home", "office", "anywhere", "agenda", "unknown"]
+      .map(function (c) {
+        return '<option value="' + c + '"' + (c === ctx ? " selected" : "") + ">" + c + "</option>";
+      }).join("");
     return (
       '<div class="detail-row"><label for="detail-text">Text</label>' +
       '<input type="text" id="detail-text" value="' + escapeHtml(t.text) + '"></div>' +
       '<div class="detail-row"><label for="detail-due">Due date</label>' +
       '<input type="date" id="detail-due" value="' + escapeHtml(t.due || "") + '">' +
       (overdue ? ' <span class="pill overdue">overdue</span>' : "") + "</div>" +
-      '<div class="detail-row"><span class="detail-label">Project</span><span>' +
-      (t.project ? '<a href="#" class="proj-open" data-name="' + escapeHtml(t.project) + '">' + escapeHtml(t.project) + "</a>"
-                  : '<span class="empty">none — inbox capture</span>') +
-      "</span></div>" +
-      '<div class="detail-row"><span class="detail-label">Context</span><span>' +
-      escapeHtml((t.context || "anywhere").replace(/^#/, "")) + "</span></div>" +
+      '<div class="detail-row"><label for="detail-context">Context</label>' +
+      '<select id="detail-context">' + ctxOptions + "</select></div>" +
+      '<div class="detail-row"><span class="detail-label">' + sourceLabel + '</span><span>' + sourceValue + "</span></div>" +
       '<div class="detail-actions">' +
       '<button type="button" class="detail-save" data-file="' + escapeHtml(t.file) + '" data-line="' + escapeHtml(t.line_text) + '">Save</button>' +
       '<button type="button" class="detail-mark-done" data-file="' + escapeHtml(t.file) + '" data-line="' + escapeHtml(t.line_text) + '">Mark done</button>' +
@@ -134,6 +144,30 @@
     );
   }
 
+  function renderNeedsTriage(state, today) {
+    var items = (state.tasks_by_context || {})["#unknown"] || [];
+    if (!items.length) return '<p class="empty">Nothing to triage.</p>';
+    return '<ul class="task-list">' + items.map(function (t) { return taskLine(t, today); }).join("") + "</ul>";
+  }
+
+  function renderMeetings(meetings) {
+    if (!meetings || !meetings.length) return '<p class="empty">No meetings yet.</p>';
+    return "<ul>" + meetings.map(function (m) {
+      var tPill = m.transcription_status === "done"
+        ? '<span class="pill">transcribed</span>'
+        : (m.transcription_status === "failed"
+            ? '<span class="pill overdue">transcription failed</span>'
+            : '<span class="pill overdue">pending transcription</span>');
+      var sPill = m.transcription_status === "done"
+        ? (m.summary_status === "done"
+            ? '<span class="pill">summarized</span>'
+            : '<span class="pill overdue">pending summary</span>')
+        : "";
+      return '<li><a href="obsidian://open?path=' + encodeURIComponent(m.file) + '">' +
+        escapeHtml(m.name) + "</a>" + tPill + sPill + "</li>";
+    }).join("") + "</ul>";
+  }
+
   function render(state, query, today) {
     var totalTasks = Object.keys(state.tasks_by_context || {}).reduce(function (n, k) {
       return n + state.tasks_by_context[k].length;
@@ -150,12 +184,15 @@
       waitingHtml: renderSimpleList(state.waiting || [], today),
       projectsHtml: renderProjects(state.active_projects || []),
       somedayHtml: renderProjects(state.someday_projects || []),
+      needsTriageHtml: renderNeedsTriage(state, today),
+      meetingsHtml: renderMeetings(state.meetings || []),
     };
   }
 
   var api = {
     escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
+    renderNeedsTriage: renderNeedsTriage, renderMeetings: renderMeetings,
   };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;

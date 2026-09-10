@@ -155,3 +155,78 @@ test("projectDetailHtml shows placeholders for a project with no outcome and no 
   assert.match(html, /No outcome set yet\./);
   assert.match(html, /No open tasks\./);
 });
+
+test("taskDetailHtml renders a context select with the task's context selected", () => {
+  const t = { text: "x", file: "f.md", line_text: "x", project: "P", context: "#phone", due: null };
+  const html = L.taskDetailHtml(t, "2026-09-10");
+  assert.match(html, /<select id="detail-context">/);
+  assert.match(html, /<option value="phone" selected>phone<\/option>/);
+  assert.match(html, /<option value="unknown">unknown<\/option>/);
+});
+
+test("taskDetailHtml shows a meeting pill and 'Meeting' label for a task with no project but a meeting", () => {
+  const t = { text: "Email the vendor", file: "Meetings/2026-09-10 Sync.md", line_text: "x",
+    project: null, meeting: "2026-09-10 Sync", context: "#unknown", due: null };
+  const html = L.taskDetailHtml(t, "2026-09-10");
+  assert.match(html, />Meeting<\/span>/);
+  assert.match(html, /meeting-open" data-name="2026-09-10 Sync"/);
+  assert.doesNotMatch(html, /none — inbox capture/);
+});
+
+test("taskLine shows a meeting pill when the task has no project but has a meeting", () => {
+  // #unknown tasks live only in the Needs-triage card (renderTasksByContext's ctxOrder excludes
+  // "#unknown" by design — see the renderNeedsTriage tests below), so this exercises taskLine's
+  // meeting-pill behavior through a normal, already-triaged context instead.
+  const t = { text: "Email the vendor", file: "Meetings/2026-09-10 Sync.md",
+    line_text: "- [ ] Email the vendor #next #computer", project: null, meeting: "2026-09-10 Sync" };
+  const html = L.render(
+    { inbox_count: 0, tasks_by_context: { "#computer": [t] }, waiting: [], due_soon: [],
+      active_projects: [], someday_projects: [] },
+    "", "2026-09-10"
+  ).tasksHtml;
+  assert.match(html, /meeting-open" data-name="2026-09-10 Sync"/);
+});
+
+test("renderNeedsTriage lists every #unknown-context task", () => {
+  const state = { tasks_by_context: { "#unknown": [
+    { text: "Email the vendor", file: "Meetings/x.md", line_text: "x", project: null, meeting: "Sync" },
+  ] } };
+  const html = L.renderNeedsTriage(state, "2026-09-10");
+  assert.match(html, /Email the vendor/);
+  assert.match(html, /meeting-open" data-name="Sync"/);
+});
+
+test("renderNeedsTriage shows an empty state when nothing needs triage", () => {
+  const html = L.renderNeedsTriage({ tasks_by_context: {} }, "2026-09-10");
+  assert.equal(html, '<p class="empty">Nothing to triage.</p>');
+});
+
+test("renderMeetings lists meetings with status pills and an Obsidian link", () => {
+  const meetings = [
+    { name: "2026-09-10 Sync", file: "Meetings/2026-09-10 Sync.md", date: "2026-09-10",
+      transcription_status: "done", summary_status: "pending" },
+    { name: "2026-09-09 Standup", file: "Meetings/2026-09-09 Standup.md", date: "2026-09-09",
+      transcription_status: "pending", summary_status: "pending" },
+  ];
+  const html = L.renderMeetings(meetings);
+  assert.match(html, /2026-09-10 Sync/);
+  assert.match(html, /pending summary/);
+  assert.match(html, /pending transcription/);
+  assert.match(html, /obsidian:\/\/open\?path=Meetings%2F2026-09-10%20Sync\.md/);
+});
+
+test("renderMeetings shows an empty state with no meetings", () => {
+  assert.equal(L.renderMeetings([]), '<p class="empty">No meetings yet.</p>');
+});
+
+test("render includes needsTriageHtml and meetingsHtml", () => {
+  const state = {
+    inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [],
+    active_projects: [], someday_projects: [],
+    meetings: [{ name: "Sync", file: "Meetings/Sync.md", date: "2026-09-10",
+      transcription_status: "done", summary_status: "done" }],
+  };
+  const out = L.render(state, "", "2026-09-10");
+  assert.match(out.needsTriageHtml, /Nothing to triage/);
+  assert.match(out.meetingsHtml, /Sync/);
+});
