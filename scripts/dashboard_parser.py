@@ -36,6 +36,7 @@ def iter_tasks_with_location(vault: Path):
                     "tags": tags,
                     "fields": fields,
                     "project": p.stem if d == "10 Projects" else None,
+                    "meeting": p.stem if d == "Meetings" else None,
                 }
 
 
@@ -118,7 +119,7 @@ def collect_state(vault: Path) -> dict:
         if "#waiting" in tags:
             waiting.append({
                 "text": t["text"], "file": t["file"], "line_text": t["line_text"],
-                "project": t["project"], "since": fields.get("since"),
+                "project": t["project"], "meeting": t["meeting"], "since": fields.get("since"),
             })
             continue
         if "#next" not in tags:
@@ -134,7 +135,7 @@ def collect_state(vault: Path) -> dict:
         due = fields.get("due")
         entry = {
             "text": t["text"], "file": t["file"], "line_text": t["line_text"],
-            "project": t["project"], "context": ctx, "due": due,
+            "project": t["project"], "meeting": t["meeting"], "context": ctx, "due": due,
         }
         tasks_by_context.setdefault(ctx, []).append(entry)
         if due:
@@ -145,6 +146,22 @@ def collect_state(vault: Path) -> dict:
             except ValueError:
                 pass
 
+    meetings: list[dict] = []
+    mt = vault / "Meetings"
+    if mt.is_dir():
+        for p in sorted(mt.glob("*.md")):
+            if p.name == "README.md":
+                continue
+            fm = _parse_frontmatter(p.read_text(encoding="utf-8"))
+            rel = str(p.relative_to(vault)).replace("\\", "/")
+            meetings.append({
+                "name": p.stem, "file": rel, "date": fm.get("date"),
+                "transcription_status": fm.get("transcription_status"),
+                "summary_status": fm.get("summary_status"),
+            })
+        meetings.sort(key=lambda m: m["date"] or "", reverse=True)
+        meetings = meetings[:8]
+
     return {
         "inbox_count": inbox_count,
         "tasks_by_context": tasks_by_context,
@@ -152,4 +169,5 @@ def collect_state(vault: Path) -> dict:
         "due_soon": due_soon,
         "active_projects": active_projects,
         "someday_projects": someday_projects,
+        "meetings": meetings,
     }
