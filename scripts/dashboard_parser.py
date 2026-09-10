@@ -2,6 +2,7 @@
 """Parse vault task/project state for the local dashboard server. stdlib only."""
 from __future__ import annotations
 import datetime as _dt
+import re as _re
 import sys as _sys
 from pathlib import Path
 
@@ -38,8 +39,7 @@ def iter_tasks_with_location(vault: Path):
                 }
 
 
-def _project_frontmatter(p: Path) -> dict:
-    text = p.read_text(encoding="utf-8")
+def _parse_frontmatter(text: str) -> dict:
     if not text.startswith("---"):
         return {}
     end = text.find("\n---", 3)
@@ -52,6 +52,25 @@ def _project_frontmatter(p: Path) -> dict:
         k, _, v = line.partition(":")
         fm[k.strip()] = v.strip().strip('"')
     return fm
+
+
+def _project_frontmatter(p: Path) -> dict:
+    return _parse_frontmatter(p.read_text(encoding="utf-8"))
+
+
+_OUTCOME_RE = _re.compile(r"^\*\*Outcome:\*\*\s*(.*)$", _re.MULTILINE)
+
+
+def _extract_outcome(text: str) -> str | None:
+    """Pull the '**Outcome:** ...' line's text, or None if absent/still the
+    template's italic placeholder (e.g. `_What does "done" look like?_`)."""
+    m = _OUTCOME_RE.search(text)
+    if not m:
+        return None
+    outcome = m.group(1).strip()
+    if outcome.startswith("_") and outcome.endswith("_") and len(outcome) > 1:
+        return None
+    return outcome or None
 
 
 def collect_state(vault: Path) -> dict:
@@ -69,7 +88,9 @@ def collect_state(vault: Path) -> dict:
         for p in sorted(pj.rglob("*.md")):
             if p.name == "README.md":
                 continue
-            fm = _project_frontmatter(p)
+            text = p.read_text(encoding="utf-8")
+            fm = _parse_frontmatter(text)
+            outcome = _extract_outcome(text)
             status = fm.get("status", "")
             rel = str(p.relative_to(vault)).replace("\\", "/")
             if status == "active":
@@ -82,9 +103,10 @@ def collect_state(vault: Path) -> dict:
                         pass
                 active_projects.append({
                     "name": p.stem, "file": rel, "review": review, "review_overdue": review_overdue,
+                    "outcome": outcome,
                 })
             elif status == "someday":
-                someday_projects.append({"name": p.stem, "file": rel})
+                someday_projects.append({"name": p.stem, "file": rel, "outcome": outcome})
 
     tasks_by_context: dict[str, list[dict]] = {}
     waiting: list[dict] = []

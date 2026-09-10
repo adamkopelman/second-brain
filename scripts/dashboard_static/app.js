@@ -18,8 +18,6 @@
 
   function renderAll() {
     if (!state) return;
-    var active = document.activeElement;
-    if (active && active.classList && active.classList.contains("task-text")) return;
     var out = DashboardLogic.render(state, query, today());
     document.getElementById("kpis").innerHTML =
       ["inbox", "tasks", "waiting", "due"].map(function (k) {
@@ -50,7 +48,87 @@
     });
   }
 
+  function findTaskInState(file, line) {
+    var ctxKeys = Object.keys(state.tasks_by_context || {});
+    for (var i = 0; i < ctxKeys.length; i++) {
+      var arr = state.tasks_by_context[ctxKeys[i]];
+      for (var j = 0; j < arr.length; j++) {
+        if (arr[j].file === file && arr[j].line_text === line) return arr[j];
+      }
+    }
+    var lists = [state.waiting, state.due_soon];
+    for (var l = 0; l < lists.length; l++) {
+      for (var k = 0; k < lists[l].length; k++) {
+        if (lists[l][k].file === file && lists[l][k].line_text === line) return lists[l][k];
+      }
+    }
+    return null;
+  }
+
+  var detailModal = document.getElementById("detail-modal");
+  var detailTitle = document.getElementById("detail-title");
+  var detailBody = document.getElementById("detail-body");
+
+  function openDetailModal(title, bodyHtml) {
+    detailTitle.textContent = title;
+    detailBody.innerHTML = bodyHtml;
+    detailModal.classList.remove("hidden");
+  }
+
+  function closeDetailModal() {
+    detailModal.classList.add("hidden");
+  }
+
+  function openTaskDetail(file, line) {
+    var t = findTaskInState(file, line);
+    if (!t) return;
+    openDetailModal("Task", DashboardLogic.taskDetailHtml(t, today()));
+  }
+
+  function openProjectDetail(name) {
+    var all = (state.active_projects || []).concat(state.someday_projects || []);
+    var p = all.filter(function (x) { return x.name === name; })[0];
+    if (!p) return;
+    var related = DashboardLogic.tasksForProject(state, name);
+    openDetailModal("Project", DashboardLogic.projectDetailHtml(p, related, today()));
+  }
+
+  document.getElementById("detail-modal-close").addEventListener("click", closeDetailModal);
+  detailModal.addEventListener("click", function (e) {
+    if (e.target === detailModal) closeDetailModal();
+  });
+
   document.addEventListener("click", function (e) {
+    var projTrigger = e.target.closest(".proj-open");
+    if (projTrigger) {
+      e.preventDefault();
+      openProjectDetail(projTrigger.getAttribute("data-name"));
+      return;
+    }
+
+    var saveBtn = e.target.closest(".detail-save");
+    if (saveBtn) {
+      var newText = document.getElementById("detail-text").value.trim();
+      var newDue = document.getElementById("detail-due").value;
+      var editBody = { file: saveBtn.getAttribute("data-file"), line_text: saveBtn.getAttribute("data-line"), new_text: newText };
+      if (newDue) editBody.new_due = newDue;
+      post("/api/edit-task", editBody).then(function () { closeDetailModal(); refresh(); })
+        .catch(function () { closeDetailModal(); refresh(); });
+      return;
+    }
+    var doneBtn = e.target.closest(".detail-mark-done");
+    if (doneBtn) {
+      post("/api/complete-task", { file: doneBtn.getAttribute("data-file"), line_text: doneBtn.getAttribute("data-line") })
+        .then(function () { closeDetailModal(); refresh(); }).catch(function () { closeDetailModal(); refresh(); });
+      return;
+    }
+    var detailDelBtn = e.target.closest(".detail-delete");
+    if (detailDelBtn) {
+      post("/api/delete-task", { file: detailDelBtn.getAttribute("data-file"), line_text: detailDelBtn.getAttribute("data-line") })
+        .then(function () { closeDetailModal(); refresh(); }).catch(function () { closeDetailModal(); refresh(); });
+      return;
+    }
+
     var li = e.target.closest(".task");
     if (!li) return;
     var file = li.getAttribute("data-file");
@@ -59,23 +137,9 @@
       post("/api/complete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
     } else if (e.target.classList.contains("task-delete")) {
       post("/api/delete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
+    } else {
+      openTaskDetail(file, line);
     }
-  });
-
-  document.addEventListener("focusin", function (e) {
-    if (e.target.classList && e.target.classList.contains("task-text")) {
-      e.target.dataset.original = e.target.textContent.trim();
-    }
-  });
-
-  document.addEventListener("focusout", function (e) {
-    if (!e.target.classList || !e.target.classList.contains("task-text")) return;
-    var newText = e.target.textContent.trim();
-    if (!newText || newText === e.target.dataset.original) return;
-    var li = e.target.closest(".task");
-    var file = li.getAttribute("data-file");
-    var line = li.getAttribute("data-line");
-    post("/api/edit-task", { file: file, line_text: line, new_text: newText }).then(refresh).catch(refresh);
   });
 
   document.getElementById("search").addEventListener("input", function (e) {
@@ -108,6 +172,7 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       closeQuickAdd();
+      closeDetailModal();
       return;
     }
     var tag = (e.target.tagName || "").toLowerCase();

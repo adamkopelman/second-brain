@@ -66,3 +66,17 @@ def test_collect_state_on_empty_vault(tmp_path):
     assert state["tasks_by_context"] == {}
     assert state["waiting"] == []
     assert state["active_projects"] == []
+
+def test_collect_state_extracts_project_outcome(tmp_path):
+    (tmp_path / "10 Projects").mkdir(parents=True)
+    (tmp_path / "10 Projects" / "Filled.md").write_text(
+        "---\ntype: project\nstatus: active\n---\n# Filled\n\n"
+        "**Outcome:** New site launched with updated branding.\n\n## Next actions\n")
+    (tmp_path / "10 Projects" / "Blank.md").write_text(
+        "---\ntype: project\nstatus: someday\n---\n# Blank\n\n"
+        '**Outcome:** _What does "done" look like?_\n')
+    state = P.collect_state(tmp_path)
+    filled = next(p for p in state["active_projects"] if p["name"] == "Filled")
+    assert filled["outcome"] == "New site launched with updated branding."
+    blank = next(p for p in state["someday_projects"] if p["name"] == "Blank")
+    assert blank["outcome"] is None

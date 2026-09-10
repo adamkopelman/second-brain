@@ -31,11 +31,13 @@
       ? '<span class="due' + (isOverdue(t.due, today) ? " overdue" : "") + '">' +
         escapeHtml(t.due) + "</span>"
       : "";
-    var proj = t.project ? '<span class="proj">' + escapeHtml(t.project) + "</span>" : "";
+    var proj = t.project
+      ? '<span class="proj proj-open" data-name="' + escapeHtml(t.project) + '">' + escapeHtml(t.project) + "</span>"
+      : "";
     return '<li class="task" data-file="' + escapeHtml(t.file) + '" data-line="' +
       escapeHtml(t.line_text) + '">' +
       '<input type="checkbox" class="task-check">' +
-      '<span class="task-text" contenteditable="true">' + escapeHtml(t.text) + "</span>" +
+      '<span class="task-text">' + escapeHtml(t.text) + "</span>" +
       proj + due +
       '<button class="task-delete" title="Delete">×</button>' +
       "</li>";
@@ -66,9 +68,70 @@
       var pill = p.review_overdue
         ? '<span class="pill overdue">review overdue</span>'
         : (p.review ? '<span class="pill">review ' + escapeHtml(p.review) + "</span>" : "");
-      return '<li><a href="obsidian://open?path=' + encodeURIComponent(p.file) + '">' +
+      return '<li><a href="#" class="proj-open" data-name="' + escapeHtml(p.name) + '">' +
         escapeHtml(p.name) + "</a>" + pill + "</li>";
     }).join("") + "</ul>";
+  }
+
+  // Every open task (any context, plus waiting-for) belonging to one project,
+  // deduplicated by (file, line) — used by the project detail overlay.
+  function tasksForProject(state, projectName) {
+    var seen = {};
+    var out = [];
+    function addAll(list) {
+      (list || []).forEach(function (t) {
+        if (t.project !== projectName) return;
+        var key = t.file + "|" + t.line_text;
+        if (seen[key]) return;
+        seen[key] = true;
+        out.push(t);
+      });
+    }
+    Object.keys(state.tasks_by_context || {}).forEach(function (ctx) {
+      addAll(state.tasks_by_context[ctx]);
+    });
+    addAll(state.waiting);
+    return out;
+  }
+
+  function taskDetailHtml(t, today) {
+    var overdue = t.due && isOverdue(t.due, today);
+    return (
+      '<div class="detail-row"><label for="detail-text">Text</label>' +
+      '<input type="text" id="detail-text" value="' + escapeHtml(t.text) + '"></div>' +
+      '<div class="detail-row"><label for="detail-due">Due date</label>' +
+      '<input type="date" id="detail-due" value="' + escapeHtml(t.due || "") + '">' +
+      (overdue ? ' <span class="pill overdue">overdue</span>' : "") + "</div>" +
+      '<div class="detail-row"><span class="detail-label">Project</span><span>' +
+      (t.project ? '<a href="#" class="proj-open" data-name="' + escapeHtml(t.project) + '">' + escapeHtml(t.project) + "</a>"
+                  : '<span class="empty">none — inbox capture</span>') +
+      "</span></div>" +
+      '<div class="detail-row"><span class="detail-label">Context</span><span>' +
+      escapeHtml((t.context || "anywhere").replace(/^#/, "")) + "</span></div>" +
+      '<div class="detail-actions">' +
+      '<button type="button" class="detail-save" data-file="' + escapeHtml(t.file) + '" data-line="' + escapeHtml(t.line_text) + '">Save</button>' +
+      '<button type="button" class="detail-mark-done" data-file="' + escapeHtml(t.file) + '" data-line="' + escapeHtml(t.line_text) + '">Mark done</button>' +
+      '<button type="button" class="detail-delete" data-file="' + escapeHtml(t.file) + '" data-line="' + escapeHtml(t.line_text) + '">Delete</button>' +
+      "</div>"
+    );
+  }
+
+  function projectDetailHtml(p, relatedTasks, today) {
+    var pill = p.review_overdue
+      ? '<span class="pill overdue">review overdue</span>'
+      : (p.review ? '<span class="pill">review ' + escapeHtml(p.review) + "</span>" : "");
+    var outcome = p.outcome ? escapeHtml(p.outcome) : '<span class="empty">No outcome set yet.</span>';
+    var tasksHtml = relatedTasks.length
+      ? '<ul class="task-list">' + relatedTasks.map(function (t) { return taskLine(t, today); }).join("") + "</ul>"
+      : '<p class="empty">No open tasks.</p>';
+    return (
+      '<div class="detail-row"><span class="detail-label">Project</span><span>' +
+      escapeHtml(p.name) + pill + "</span></div>" +
+      '<div class="detail-row"><span class="detail-label">Outcome</span><span>' + outcome + "</span></div>" +
+      '<div class="detail-label" style="margin-top:6px;">Open tasks</div>' + tasksHtml +
+      '<div class="detail-actions"><a class="detail-open-link" href="obsidian://open?path=' +
+      encodeURIComponent(p.file) + '">Open full note in Obsidian</a></div>'
+    );
   }
 
   function render(state, query, today) {
@@ -90,7 +153,10 @@
     };
   }
 
-  var api = { escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render };
+  var api = {
+    escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
+    tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
+  };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
   } else {
