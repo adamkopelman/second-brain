@@ -12,10 +12,11 @@ opencode, and any harness that discovers skills in `.claude/skills/`.
 - `gtd-status` — a read-only brief (inbox, projects, review recency, next actions).
 - `gtd-dashboard` — build a portable `dashboard.html`.
 - `gtd-outlook` — pull email/calendar from the Outlook MCP.
-- `gtd-transcribe-meeting` — transcribe pending meeting recordings and extract action items.
+- `gtd-transcribe-meeting` — transcribe pending meeting recordings (mechanical); on-demand full pipeline.
+- `gtd-summarize-meetings` — summarize transcribed meetings into notes/decisions/action items (Claude Code, real generation; scheduler-safe).
 
 ## Conventions
-Tasks are markdown checkboxes. Contexts: `#computer #phone #errands #home #office #anywhere #agenda`.
+Tasks are markdown checkboxes. Contexts: `#computer #phone #errands #home #office #anywhere #agenda #unknown`.
 Status: `#next` `#waiting` `#someday`. Fields: `[due:: ]` `[scheduled:: ]` `[since:: ]`. Full spec:
 `30 Resources/GTD System.md`.
 
