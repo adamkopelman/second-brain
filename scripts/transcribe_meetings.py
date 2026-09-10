@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Transcribe pending meeting recordings and extract #next action items. Stdlib only."""
+"""Transcribe pending meeting recordings. Mechanical only — stdlib only.
+
+Summarization and action-item extraction happen separately, in Claude Code (see the
+`gtd-summarize-meetings` skill) — a regex can't read Hebrew or unstructured speech, so this script's
+job stops at getting a transcript into the note.
+"""
 from __future__ import annotations
 import argparse, datetime as _dt, json, re, subprocess, sys, tempfile, urllib.request
 from pathlib import Path
@@ -8,11 +13,8 @@ FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
 FIELD_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*):\s*(.*)$")
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
-ACTION_CUES = re.compile(
-    r"\b(i'll|i will|we'll|we will|let's|lets|let us|need(?:s)? to|"
-    r"should|going to|have to|has to|will follow up|follow up|"
-    r"action item|to-?do|by (?:monday|tuesday|wednesday|thursday|friday|next week|tomorrow))\b",
-    re.IGNORECASE,
+PENDING_SUMMARY_NOTE = (
+    "_Pending summary — run /gtd-transcribe-meeting or /gtd-summarize-meetings in Claude Code._"
 )
 
 
@@ -100,7 +102,7 @@ def transcribe_local(wav: Path, whisper_bin: Path, model: Path) -> str:
         out_base = Path(td) / "out"
         subprocess.run(
             [str(whisper_bin), "-m", str(model), "-f", str(wav),
-             "-oj", "-of", str(out_base), "-np", "-l", "en"],
+             "-oj", "-of", str(out_base), "-np", "-l", "auto"],
             check=True, capture_output=True, timeout=1800,
         )
         data = json.loads(out_base.with_suffix(".json").read_text(encoding="utf-8"))
@@ -129,24 +131,6 @@ def transcribe_remote(wav: Path, url: str, api_key: str | None) -> str:
     return data.get("text", "").strip()
 
 
-def extract_action_items(transcript: str) -> list[str]:
-    sentences = re.split(r"(?<=[.!?])\s+", transcript)
-    seen: set[str] = set()
-    items: list[str] = []
-    for s in sentences:
-        s = s.strip()
-        if not s or len(s) < 8:
-            continue
-        if ACTION_CUES.search(s):
-            key = s.lower()
-            if key not in seen:
-                seen.add(key)
-                items.append(s)
-        if len(items) >= 10:
-            break
-    return items
-
-
 def _replace_section(body: str, heading: str, content: str) -> str:
     pattern = re.compile(rf"{re.escape(heading)}\n.*?(?=\n## |\Z)", re.DOTALL)
     replacement = f"{heading}\n{content}\n"
@@ -155,17 +139,12 @@ def _replace_section(body: str, heading: str, content: str) -> str:
     return body + f"\n{replacement}"
 
 
-def apply_transcript(note_text: str, transcript: str, action_items: list[str], note_stem: str) -> str:
+def apply_transcript(note_text: str, transcript: str, note_stem: str) -> str:
     _, body = parse_frontmatter(note_text)
 
     transcript_block = transcript if transcript else "_No speech detected._"
     body = _replace_section(body, "## Transcript", transcript_block)
-
-    if action_items:
-        items_block = "\n".join(f"- [ ] {i} #next [[{note_stem}]]" for i in action_items)
-    else:
-        items_block = "_No action items detected — review manually._"
-    body = _replace_section(body, "## Action items", items_block)
+    body = _replace_section(body, "## Action items", PENDING_SUMMARY_NOTE)
 
     raw, _ = _split_frontmatter(note_text)
     joined = _join_frontmatter(raw, body)
@@ -173,6 +152,7 @@ def apply_transcript(note_text: str, transcript: str, action_items: list[str], n
         joined,
         transcription_status="done",
         transcribed=_dt.date.today().isoformat(),
+        summary_status="pending",
     )
 
 
@@ -202,11 +182,8 @@ def process(vault: Path, whisper_bin: Path, model: Path, remote_url: str | None,
             note_path.write_text(mark_failed(note_text, str(e)), encoding="utf-8")
             results.append(f"FAILED ({e}): {note_path.name}")
             continue
-        action_items = extract_action_items(transcript)
-        note_path.write_text(
-            apply_transcript(note_text, transcript, action_items, note_path.stem), encoding="utf-8"
-        )
-        results.append(f"OK ({len(action_items)} action item(s)): {note_path.name}")
+        note_path.write_text(apply_transcript(note_text, transcript, note_path.stem), encoding="utf-8")
+        results.append(f"OK (transcribed): {note_path.name}")
     return results
 
 
@@ -224,7 +201,7 @@ def main(argv=None) -> int:
     whisper_bin = (Path(args.whisper_bin) if args.whisper_bin
                    else vault / "vendor" / "whisper-cpp" / "whisper-cli.exe")
     model = (Path(args.model) if args.model
-             else vault / "vendor" / "whisper-cpp" / "models" / "ggml-tiny.en.bin")
+             else vault / "vendor" / "whisper-cpp" / "models" / "ggml-tiny.bin")
 
     if not args.remote_url and not whisper_bin.is_file():
         print(f"error: whisper binary not found at {whisper_bin} "

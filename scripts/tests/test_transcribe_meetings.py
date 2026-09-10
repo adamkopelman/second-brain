@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import transcribe_meetings as T
@@ -56,40 +57,24 @@ def test_resolve_recording_missing_file_returns_none(tmp_path):
     assert T.resolve_recording(vault, fm) is None
 
 
-def test_extract_action_items_matches_action_cues():
-    transcript = (
-        "We discussed the budget. I'll send the report by Friday. "
-        "The weather was nice. We need to schedule a follow up call."
-    )
-    items = T.extract_action_items(transcript)
-    assert any("send the report" in i for i in items)
-    assert any("schedule a follow up" in i.lower() for i in items)
-    assert not any("weather" in i for i in items)
-
-
-def test_extract_action_items_dedupes_and_caps():
-    transcript = " ".join(["I need to follow up on this."] * 15)
-    items = T.extract_action_items(transcript)
-    assert len(items) == 1
-
-
 def test_apply_transcript_fills_sections_and_marks_done():
     note_text = (
         "---\ntranscription_status: pending\nrecording: \"[[x.wav]]\"\n---\n"
         "# Meeting\n\n## Transcript\n\n## Action items\n- [ ]  #next\n"
     )
-    out = T.apply_transcript(note_text, "Hello world.", ["Send the report."], "My Meeting")
+    out = T.apply_transcript(note_text, "Hello world.", "My Meeting")
     fm, body = T.parse_frontmatter(out)
     assert fm["transcription_status"] == "done"
+    assert fm["summary_status"] == "pending"
     assert "transcribed" in fm
     assert "Hello world." in body
-    assert "- [ ] Send the report. #next [[My Meeting]]" in body
+    assert T.PENDING_SUMMARY_NOTE in body
 
 
-def test_apply_transcript_with_no_action_items_leaves_review_note():
+def test_apply_transcript_always_leaves_pending_summary_placeholder():
     note_text = "---\ntranscription_status: pending\n---\n## Transcript\n\n## Action items\n- [ ]  #next\n"
-    out = T.apply_transcript(note_text, "Nothing actionable here.", [], "Stem")
-    assert "No action items detected" in out
+    out = T.apply_transcript(note_text, "Nothing actionable here.", "Stem")
+    assert T.PENDING_SUMMARY_NOTE in out
 
 
 def test_mark_failed_sets_status_and_appends_callout():
@@ -115,13 +100,14 @@ def test_apply_transcript_preserves_yaml_list_frontmatter():
         "---\n"
         "# Meeting\n\n## Transcript\n\n## Action items\n- [ ]  #next\n"
     )
-    out = T.apply_transcript(note_text, "Hello world.", [], "Stem")
+    out = T.apply_transcript(note_text, "Hello world.", "Stem")
     assert "  - Alice" in out
     assert "  - Bob" in out
     assert "  - meeting" in out
     assert "  - q3" in out
     fm, _ = T.parse_frontmatter(out)
     assert fm["transcription_status"] == "done"
+    assert fm["summary_status"] == "pending"
     assert "transcribed" in fm
 
 
@@ -156,7 +142,7 @@ def test_process_marks_failed_when_recording_missing(tmp_path):
     results = T.process(
         vault,
         vault / "vendor" / "whisper-cpp" / "whisper-cli.exe",
-        vault / "vendor" / "whisper-cpp" / "models" / "ggml-tiny.en.bin",
+        vault / "vendor" / "whisper-cpp" / "models" / "ggml-tiny.bin",
         None,
         None,
     )
@@ -169,10 +155,10 @@ def test_process_uses_transcribe_local_and_updates_note(tmp_path, monkeypatch):
     monkeypatch.setattr(T, "transcribe_local", lambda wav, b, m: "I'll email the vendor tomorrow.")
     results = T.process(vault, Path("fake-bin"), Path("fake-model"), None, None)
     assert len(results) == 1
-    assert results[0].startswith("OK")
+    assert results[0] == "OK (transcribed): 2026-09-10_10-00-00 Meeting.md"
     note_text = (vault / "Meetings" / "2026-09-10_10-00-00 Meeting.md").read_text(encoding="utf-8")
     assert "I'll email the vendor tomorrow." in note_text
-    assert "#next" in note_text
+    assert T.PENDING_SUMMARY_NOTE in note_text
 
 
 def test_process_is_idempotent_skips_done_notes(tmp_path, monkeypatch):
@@ -190,7 +176,7 @@ import pytest
 def test_real_vendored_whisper_binary_runs(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     whisper_bin = repo_root / "vendor" / "whisper-cpp" / "whisper-cli.exe"
-    model = repo_root / "vendor" / "whisper-cpp" / "models" / "ggml-tiny.en.bin"
+    model = repo_root / "vendor" / "whisper-cpp" / "models" / "ggml-tiny.bin"
     if not whisper_bin.is_file() or not model.is_file():
         pytest.skip("vendored whisper binary/model not present")
     import wave, struct
@@ -202,3 +188,22 @@ def test_real_vendored_whisper_binary_runs(tmp_path):
         w.writeframes(struct.pack("<h", 0) * 16000)
     text = T.transcribe_local(wav, whisper_bin, model)
     assert isinstance(text, str)
+
+
+def test_transcribe_local_passes_auto_language_not_english(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        out_base = Path(cmd[cmd.index("-of") + 1])
+        out_base.with_suffix(".json").write_text(
+            json.dumps({"transcription": [{"text": "Shalom"}]}), encoding="utf-8"
+        )
+        class Result:
+            pass
+        return Result()
+
+    monkeypatch.setattr(T.subprocess, "run", fake_run)
+    text = T.transcribe_local(tmp_path / "a.wav", Path("whisper-cli"), Path("model.bin"))
+    assert text == "Shalom"
+    assert captured["cmd"][captured["cmd"].index("-l") + 1] == "auto"
