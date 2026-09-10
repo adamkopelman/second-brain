@@ -1,0 +1,112 @@
+# scripts/tests/test_dashboard_writer.py
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import dashboard_writer as W
+import pytest
+
+def _mk_vault(vault: Path):
+    (vault / "00 Inbox").mkdir(parents=True)
+    (vault / "10 Projects").mkdir()
+    (vault / "10 Projects" / "P.md").write_text(
+        "---\ntype: project\nstatus: active\n---\n# P\n\n## Next actions\n"
+        "- [ ] Pick SSG #next #computer\n- [ ] Buy domain #next #computer\n")
+    (vault / "10 Projects" / "NoHeading.md").write_text(
+        "---\ntype: project\nstatus: active\n---\n# NoHeading\n")
+    (vault / "_templates").mkdir()
+    (vault / "_templates" / "Project.md").write_text(
+        "---\ntype: project\nstatus: active\ncreated: {{date:YYYY-MM-DD}}\n"
+        "review: {{date:YYYY-MM-DD}}\n---\n# {{title}}\n\n## Next actions\n")
+
+def test_complete_task_flips_checkbox(tmp_path):
+    _mk_vault(tmp_path)
+    W.complete_task(tmp_path, "10 Projects/P.md", "- [ ] Pick SSG #next #computer")
+    text = (tmp_path / "10 Projects" / "P.md").read_text()
+    assert "- [x] Pick SSG #next #computer" in text
+    assert "- [ ] Buy domain #next #computer" in text  # untouched
+
+def test_complete_task_missing_line_raises(tmp_path):
+    _mk_vault(tmp_path)
+    with pytest.raises(W.LineNotFoundError):
+        W.complete_task(tmp_path, "10 Projects/P.md", "- [ ] does not exist")
+
+def test_complete_task_ambiguous_line_raises(tmp_path):
+    _mk_vault(tmp_path)
+    p = tmp_path / "10 Projects" / "P.md"
+    p.write_text(p.read_text() + "- [ ] Pick SSG #next #computer\n")  # duplicate the line
+    with pytest.raises(W.AmbiguousLineError):
+        W.complete_task(tmp_path, "10 Projects/P.md", "- [ ] Pick SSG #next #computer")
+
+def test_delete_task_removes_the_line(tmp_path):
+    _mk_vault(tmp_path)
+    W.delete_task(tmp_path, "10 Projects/P.md", "- [ ] Buy domain #next #computer")
+    text = (tmp_path / "10 Projects" / "P.md").read_text()
+    assert "Buy domain" not in text
+    assert "Pick SSG" in text
+
+def test_edit_task_changes_text_and_preserves_tags(tmp_path):
+    _mk_vault(tmp_path)
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] Pick SSG #next #computer",
+                            new_text="Pick a static site generator")
+    assert new_line == "- [ ] Pick a static site generator #next #computer"
+    text = (tmp_path / "10 Projects" / "P.md").read_text()
+    assert "Pick a static site generator #next #computer" in text
+
+def test_edit_task_sets_due_date(tmp_path):
+    _mk_vault(tmp_path)
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] Buy domain #next #computer",
+                            new_due="2026-09-20")
+    assert new_line == "- [ ] Buy domain #next #computer [due:: 2026-09-20]"
+
+def test_edit_task_updates_existing_due_date(tmp_path):
+    _mk_vault(tmp_path)
+    p = tmp_path / "10 Projects" / "P.md"
+    p.write_text(p.read_text().replace(
+        "- [ ] Pick SSG #next #computer", "- [ ] Pick SSG #next #computer [due:: 2026-09-10]"))
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md",
+                            "- [ ] Pick SSG #next #computer [due:: 2026-09-10]", new_due="2026-09-20")
+    assert new_line == "- [ ] Pick SSG #next #computer [due:: 2026-09-20]"
+
+def test_create_task_without_project_writes_one_file_to_inbox(tmp_path):
+    _mk_vault(tmp_path)
+    result = W.create_task(tmp_path, "Call the dentist", "phone")
+    inbox_files = list((tmp_path / "00 Inbox").glob("*.md"))
+    assert len(inbox_files) == 1
+    assert result["file"] == "00 Inbox/" + inbox_files[0].name
+    content = inbox_files[0].read_text()
+    assert "type: inbox" in content
+    assert "- [ ] Call the dentist #next #phone" in content
+    assert result["line_text"] == "- [ ] Call the dentist #next #phone"
+
+def test_create_task_with_project_inserts_under_next_actions(tmp_path):
+    _mk_vault(tmp_path)
+    result = W.create_task(tmp_path, "Ship v1", "computer", project="P")
+    assert result["file"] == "10 Projects/P.md"
+    text = (tmp_path / "10 Projects" / "P.md").read_text()
+    assert "- [ ] Ship v1 #next #computer" in text
+
+def test_create_task_with_project_creates_missing_heading(tmp_path):
+    _mk_vault(tmp_path)
+    W.create_task(tmp_path, "Do the thing", "anywhere", project="NoHeading")
+    text = (tmp_path / "10 Projects" / "NoHeading.md").read_text()
+    assert "## Next actions" in text
+    assert "- [ ] Do the thing #next #anywhere" in text
+
+def test_create_task_unknown_project_raises(tmp_path):
+    _mk_vault(tmp_path)
+    with pytest.raises(FileNotFoundError):
+        W.create_task(tmp_path, "x", "computer", project="DoesNotExist")
+
+def test_create_project_from_template(tmp_path):
+    _mk_vault(tmp_path)
+    rel = W.create_project(tmp_path, "New Idea")
+    assert rel == "10 Projects/New Idea.md"
+    text = (tmp_path / "10 Projects" / "New Idea.md").read_text()
+    assert "# New Idea" in text
+    assert "{{" not in text  # every template placeholder was substituted
+
+def test_create_project_refuses_to_overwrite(tmp_path):
+    _mk_vault(tmp_path)
+    W.create_project(tmp_path, "New Idea")
+    with pytest.raises(FileExistsError):
+        W.create_project(tmp_path, "New Idea")
