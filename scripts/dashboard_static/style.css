@@ -98,3 +98,14 @@ h1 { font-size: 1.1rem; margin: 0 0 8px; }
 .detail-delete { color: var(--red) !important; }
 .detail-open-link { color: var(--accent); font-size: 0.85rem; text-decoration: none; }
 .detail-open-link:hover { text-decoration: underline; }
+
+.meeting { color: var(--accent); font-size: 0.75rem; }
+.meeting-open { cursor: pointer; text-decoration: none; }
+.meeting-open:hover { text-decoration: underline; }
+.card-attn { border-left: 3px solid var(--accent); }
+#transcribe-btn {
+  border-color: var(--accent); color: var(--accent); font-weight: 600;
+  margin-bottom: 6px; padding: 6px 12px; border-radius: 8px; background: var(--card-bg);
+  border-width: 1px; border-style: solid; cursor: pointer; font-size: 0.85rem;
+}
+#transcribe-btn:disabled { opacity: 0.6; cursor: default; }
