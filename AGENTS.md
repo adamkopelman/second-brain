@@ -12,6 +12,7 @@ opencode, and any harness that discovers skills in `.claude/skills/`.
 - `gtd-status` — a read-only brief (inbox, projects, review recency, next actions).
 - `gtd-dashboard` — build a portable `dashboard.html`.
 - `gtd-outlook` — pull email/calendar from the Outlook MCP.
+- `gtd-transcribe-meeting` — transcribe pending meeting recordings and extract action items.
 
 ## Conventions
 Tasks are markdown checkboxes. Contexts: `#computer #phone #errands #home #office #anywhere #agenda`.
