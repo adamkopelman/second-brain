@@ -83,7 +83,8 @@ def make_handler(vault: Path):
                     self._send_json({"ok": True})
                 elif path == "/api/edit-task":
                     new_line = W.edit_task(vault, data["file"], data["line_text"],
-                                            data.get("new_text"), data.get("new_due"))
+                                            data.get("new_text"), data.get("new_due"),
+                                            data.get("new_context"))
                     self._send_json({"ok": True, "line_text": new_line})
                 elif path == "/api/new-task":
                     result = W.create_task(vault, data["text"], data.get("context", "anywhere"),
@@ -92,6 +93,9 @@ def make_handler(vault: Path):
                 elif path == "/api/new-project":
                     rel = W.create_project(vault, data["title"])
                     self._send_json({"ok": True, "file": rel})
+                elif path == "/api/transcribe":
+                    output = W.run_transcription(vault)
+                    self._send_json({"ok": True, "output": output})
                 else:
                     self._send_json({"error": "not found"}, 404)
             except (W.LineNotFoundError, W.AmbiguousLineError, FileExistsError) as e:
