@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Transcribe pending meeting recordings and extract #next action items. Stdlib only."""
+from __future__ import annotations
+import argparse, datetime as _dt, json, re, subprocess, sys, tempfile, urllib.request
+from pathlib import Path
+
+FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
+FIELD_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*):\s*(.*)$")
+WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+ACTION_CUES = re.compile(
+    r"\b(i'll|i will|we'll|we will|let's|lets|let us|need(?:s)? to|"
+    r"should|going to|have to|has to|will follow up|follow up|"
+    r"action item|to-?do|by (?:monday|tuesday|wednesday|thursday|friday|next week|tomorrow))\b",
+    re.IGNORECASE,
+)
+
+
+def parse_frontmatter(text: str) -> tuple[dict, str]:
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        return {}, text
+    fm: dict[str, str] = {}
+    for line in m.group(1).splitlines():
+        fm_m = FIELD_RE.match(line)
+        if fm_m:
+            fm[fm_m.group(1)] = fm_m.group(2).strip()
+    return fm, m.group(2)
+
+
+def render_frontmatter(fm: dict) -> str:
+    lines = ["---"]
+    for k, v in fm.items():
+        lines.append(f"{k}: {v}")
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def find_pending(vault: Path) -> list[Path]:
+    meetings = vault / "Meetings"
+    if not meetings.is_dir():
+        return []
+    out = []
+    for p in sorted(meetings.glob("*.md")):
+        if p.name == "README.md":
+            continue
+        fm, _ = parse_frontmatter(p.read_text(encoding="utf-8"))
+        if fm.get("transcription_status") == "pending":
+            out.append(p)
+    return out
+
+
+def resolve_recording(vault: Path, fm: dict) -> Path | None:
+    raw = fm.get("recording", "")
+    m = WIKILINK_RE.search(raw)
+    rel = m.group(1) if m else raw.strip()
+    if not rel:
+        return None
+    p = vault / rel
+    return p if p.is_file() else None
+
+
+def transcribe_local(wav: Path, whisper_bin: Path, model: Path) -> str:
+    with tempfile.TemporaryDirectory() as td:
+        out_base = Path(td) / "out"
+        subprocess.run(
+            [str(whisper_bin), "-m", str(model), "-f", str(wav),
+             "-oj", "-of", str(out_base), "-np", "-l", "en"],
+            check=True, capture_output=True, timeout=1800,
+        )
+        data = json.loads(out_base.with_suffix(".json").read_text(encoding="utf-8"))
+    segments = data.get("transcription", [])
+    return " ".join(s.get("text", "").strip() for s in segments).strip()
+
+
+def transcribe_remote(wav: Path, url: str, api_key: str | None) -> str:
+    boundary = "----wsboundary"
+    parts = [
+        f"--{boundary}\r\n".encode(),
+        b'Content-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n',
+        f"--{boundary}\r\n".encode(),
+        f'Content-Disposition: form-data; name="file"; filename="{wav.name}"\r\n'.encode(),
+        b"Content-Type: audio/wav\r\n\r\n",
+        wav.read_bytes(),
+        f"\r\n--{boundary}--\r\n".encode(),
+    ]
+    payload = b"".join(parts)
+    req = urllib.request.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    if api_key:
+        req.add_header("Authorization", f"Bearer {api_key}")
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data.get("text", "").strip()
+
+
+def extract_action_items(transcript: str) -> list[str]:
+    sentences = re.split(r"(?<=[.!?])\s+", transcript)
+    seen: set[str] = set()
+    items: list[str] = []
+    for s in sentences:
+        s = s.strip()
+        if not s or len(s) < 8:
+            continue
+        if ACTION_CUES.search(s):
+            key = s.lower()
+            if key not in seen:
+                seen.add(key)
+                items.append(s)
+        if len(items) >= 10:
+            break
+    return items
+
+
+def _replace_section(body: str, heading: str, content: str) -> str:
+    pattern = re.compile(rf"{re.escape(heading)}\n.*?(?=\n## |\Z)", re.DOTALL)
+    replacement = f"{heading}\n{content}\n"
+    if pattern.search(body):
+        return pattern.sub(replacement, body)
+    return body + f"\n{replacement}"
+
+
+def apply_transcript(note_text: str, transcript: str, action_items: list[str], note_stem: str) -> str:
+    fm, body = parse_frontmatter(note_text)
+    fm["transcription_status"] = "done"
+    fm["transcribed"] = _dt.date.today().isoformat()
+
+    transcript_block = transcript if transcript else "_No speech detected._"
+    body = _replace_section(body, "## Transcript", transcript_block)
+
+    if action_items:
+        items_block = "\n".join(f"- [ ] {i} #next [[{note_stem}]]" for i in action_items)
+    else:
+        items_block = "_No action items detected — review manually._"
+    body = _replace_section(body, "## Action items", items_block)
+
+    return render_frontmatter(fm) + "\n" + body
+
+
+def mark_failed(note_text: str, reason: str) -> str:
+    fm, body = parse_frontmatter(note_text)
+    fm["transcription_status"] = "failed"
+    body += f"\n> [!fail] Transcription failed: {reason}\n"
+    return render_frontmatter(fm) + "\n" + body
+
+
+def process(vault: Path, whisper_bin: Path, model: Path, remote_url: str | None,
+            api_key: str | None) -> list[str]:
+    results = []
+    for note_path in find_pending(vault):
+        note_text = note_path.read_text(encoding="utf-8")
+        fm, _ = parse_frontmatter(note_text)
+        wav = resolve_recording(vault, fm)
+        if wav is None:
+            note_path.write_text(mark_failed(note_text, "recording file not found"), encoding="utf-8")
+            results.append(f"FAILED (no recording): {note_path.name}")
+            continue
+        try:
+            transcript = (transcribe_remote(wav, remote_url, api_key) if remote_url
+                          else transcribe_local(wav, whisper_bin, model))
+        except Exception as e:  # noqa: BLE001 - report any failure into the note, don't crash the batch
+            note_path.write_text(mark_failed(note_text, str(e)), encoding="utf-8")
+            results.append(f"FAILED ({e}): {note_path.name}")
+            continue
+        action_items = extract_action_items(transcript)
+        note_path.write_text(
+            apply_transcript(note_text, transcript, action_items, note_path.stem), encoding="utf-8"
+        )
+        results.append(f"OK ({len(action_items)} action item(s)): {note_path.name}")
+    return results
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("vault", nargs="?", default=".", help="Path to the vault root")
+    ap.add_argument("--whisper-bin", default=None, help="Path to whisper-cli(.exe)")
+    ap.add_argument("--model", default=None, help="Path to a ggml .bin model")
+    ap.add_argument("--remote-url", default=None,
+                     help="OpenAI-compatible /v1/audio/transcriptions URL; if set, skips local whisper")
+    ap.add_argument("--api-key", default=None, help="Bearer token for --remote-url")
+    args = ap.parse_args(argv)
+
+    vault = Path(args.vault).resolve()
+    whisper_bin = (Path(args.whisper_bin) if args.whisper_bin
+                   else vault / "vendor" / "whisper-cpp" / "whisper-cli.exe")
+    model = (Path(args.model) if args.model
+             else vault / "vendor" / "whisper-cpp" / "models" / "ggml-tiny.en.bin")
+
+    if not args.remote_url and not whisper_bin.is_file():
+        print(f"error: whisper binary not found at {whisper_bin} "
+              "(pass --remote-url to use a remote model instead)", file=sys.stderr)
+        return 1
+
+    results = process(vault, whisper_bin, model, args.remote_url, args.api_key)
+    if not results:
+        print("No pending meeting recordings.")
+        return 0
+    for r in results:
+        print(r)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
