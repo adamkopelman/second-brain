@@ -57,11 +57,33 @@ def test_calendar_cache_reports_loading_then_ok():
     assert snap["updated"]
 
 
-def test_calendar_cache_passes_a_week_window_to_the_fetcher():
+def test_query_window_uses_dates_that_read_the_same_day_first_or_month_first():
+    # outlook-mcp-rs hands dates to Outlook month-first; on a dd/MM locale (en-IL) Outlook reads
+    # them day-first, so 2026-09-11 became 9 Nov and this week's events never came back
+    assert OC.query_window(dt.date(2026, 9, 11), 7) == (dt.date(2026, 9, 9), dt.date(2026, 10, 10))
+    assert OC.query_window(dt.date(2026, 1, 1), 7) == (dt.date(2026, 1, 1), dt.date(2026, 2, 2))
+    assert OC.query_window(dt.date(2026, 12, 20), 7) == (dt.date(2026, 12, 12), dt.date(2027, 1, 1))
+    day = dt.date(2026, 1, 1)
+    while day.year == 2026:
+        start, end = OC.query_window(day, 7)
+        assert start.day == start.month and end.day == end.month
+        assert start <= day and end >= day + dt.timedelta(days=7)
+        assert (end - start).days <= 70
+        day += dt.timedelta(days=1)
+
+
+def test_calendar_cache_asks_for_a_locale_proof_window_and_keeps_only_the_week():
     seen = []
-    cache = OC.CalendarCache(["x"], fetch=lambda cmd, s, e: seen.append((cmd, s, e)) or [], today=lambda: D1)
+
+    def fetch(cmd, start, end):
+        seen.append((start, end))
+        return [{"subject": s, "start": f"{d}T10:00:00", "end": f"{d}T11:00:00"} for s, d in [
+            ("Before", "2026-09-10"), ("Today", "2026-09-11"), ("Last day", "2026-09-17"), ("After", "2026-09-18")]]
+
+    cache = OC.CalendarCache(["x"], fetch=fetch, today=lambda: D1)
     cache.refresh()
-    assert seen == [(["x"], D1, D1 + dt.timedelta(days=7))]
+    assert seen == [(dt.date(2026, 9, 9), dt.date(2026, 10, 10))]
+    assert [e["subject"] for e in cache.snapshot()["events"]] == ["Today", "Last day"]
 
 
 def test_calendar_cache_without_a_command_is_unavailable():
