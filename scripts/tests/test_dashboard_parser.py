@@ -69,6 +69,22 @@ def test_iter_tasks_with_location_shows_a_links_alias(tmp_path):
     task = next(P.iter_tasks_with_location(tmp_path))
     assert task["links"] == ["Sam"]
 
+def test_iter_tasks_with_location_skips_blank_template_placeholders(tmp_path):
+    (tmp_path / "Journal").mkdir()
+    (tmp_path / "Journal" / "2026-09-10.md").write_text(
+        "## Today's next actions\n- [ ]  #next\n- [ ] Real one #next\n")
+    (tmp_path / "People").mkdir()
+    (tmp_path / "People" / "Sam Rivera.md").write_text(
+        "## Waiting for\n- [ ]  #waiting [[Sam Rivera]] [since:: 2026-09-10]\n")
+    texts = [t["text"] for t in P.iter_tasks_with_location(tmp_path)]
+    assert texts == ["Real one"]
+
+def test_iter_tasks_with_location_keeps_a_task_that_is_only_a_link(tmp_path):
+    (tmp_path / "10 Projects").mkdir()
+    (tmp_path / "10 Projects" / "P.md").write_text("- [ ] #agenda [[Sam Rivera]]\n")
+    task = next(P.iter_tasks_with_location(tmp_path))
+    assert task["links"] == ["Sam Rivera"]
+
 def test_collect_state_threads_links_and_vault_name(tmp_path):
     _mk_vault(tmp_path)
     state = P.collect_state(tmp_path)
