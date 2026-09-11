@@ -50,7 +50,7 @@
 
   function renderAll() {
     if (!state) return;
-    var out = DashboardLogic.render(state, query, today(), pendingDeletes);
+    var out = DashboardLogic.render(state, query, today(), pendingDeletes, DashboardLogic.localDateTime(new Date()).slice(0, 16));
     document.getElementById("tabs").innerHTML = DashboardLogic.renderTabs(out.tabs, page);
     document.getElementById("today").innerHTML = out.todayHtml;
     document.getElementById("tasks").innerHTML = out.tasksHtml;
