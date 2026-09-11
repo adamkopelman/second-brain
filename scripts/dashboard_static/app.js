@@ -1,8 +1,10 @@
 // scripts/dashboard_static/app.js
 (function () {
   var POLL_MS = 4000;
+  var UNDO_MS = 5000;
   var state = null;
   var query = "";
+  var pendingDeletes = {}; // taskKey -> timeout id; the file is only touched once the undo window closes
 
   function today() {
     var d = new Date();
@@ -18,7 +20,7 @@
 
   function renderAll() {
     if (!state) return;
-    var out = DashboardLogic.render(state, query, today());
+    var out = DashboardLogic.render(state, query, today(), pendingDeletes);
     document.getElementById("kpis").innerHTML =
       ["inbox", "tasks", "waiting", "due"].map(function (k) {
         return '<div class="kpi"><b>' + out.kpis[k] + "</b><div>" + k + "</div></div>";
@@ -48,6 +50,24 @@
       if (!r.ok) throw new Error("request failed: " + r.status);
       return r.json();
     });
+  }
+
+  function scheduleDelete(file, line) {
+    var key = DashboardLogic.taskKey(file, line);
+    if (pendingDeletes[key]) return;
+    pendingDeletes[key] = setTimeout(function () {
+      post("/api/delete-task", { file: file, line_text: line })
+        .then(function () { delete pendingDeletes[key]; refresh(); })
+        .catch(function () { delete pendingDeletes[key]; refresh(); });
+    }, UNDO_MS);
+    renderAll();
+  }
+
+  function undoDelete(file, line) {
+    var key = DashboardLogic.taskKey(file, line);
+    clearTimeout(pendingDeletes[key]);
+    delete pendingDeletes[key];
+    renderAll();
   }
 
   function findTaskInState(file, line) {
@@ -92,7 +112,7 @@
     var p = all.filter(function (x) { return x.name === name; })[0];
     if (!p) return;
     var related = DashboardLogic.tasksForProject(state, name);
-    openDetailModal("Project", DashboardLogic.projectDetailHtml(p, related, today()));
+    openDetailModal("Project", DashboardLogic.projectDetailHtml(p, related, today(), state.vault_name));
   }
 
   document.getElementById("detail-modal-close").addEventListener("click", closeDetailModal);
@@ -112,7 +132,13 @@
     if (meetingTrigger) {
       e.preventDefault();
       var meetingFile = meetingTrigger.getAttribute("data-file");
-      if (meetingFile) window.open("obsidian://open?path=" + encodeURIComponent(meetingFile));
+      if (meetingFile) window.open(DashboardLogic.obsidianUrl(state.vault_name, meetingFile));
+      return;
+    }
+
+    var undoBtn = e.target.closest(".task-undo");
+    if (undoBtn) {
+      undoDelete(undoBtn.getAttribute("data-file"), undoBtn.getAttribute("data-line"));
       return;
     }
 
@@ -136,8 +162,8 @@
     }
     var detailDelBtn = e.target.closest(".detail-delete");
     if (detailDelBtn) {
-      post("/api/delete-task", { file: detailDelBtn.getAttribute("data-file"), line_text: detailDelBtn.getAttribute("data-line") })
-        .then(function () { closeDetailModal(); refresh(); }).catch(function () { closeDetailModal(); refresh(); });
+      closeDetailModal();
+      scheduleDelete(detailDelBtn.getAttribute("data-file"), detailDelBtn.getAttribute("data-line"));
       return;
     }
 
@@ -148,7 +174,7 @@
     if (e.target.classList.contains("task-check")) {
       post("/api/complete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
     } else if (e.target.classList.contains("task-delete")) {
-      post("/api/delete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
+      scheduleDelete(file, line);
     } else {
       openTaskDetail(file, line);
     }

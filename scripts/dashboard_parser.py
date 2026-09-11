@@ -22,6 +22,18 @@ def _clean_no_links(body: str) -> str:
     return _re.sub(r"\s+", " ", t).strip()
 
 
+def _links_except_self(body: str, own_stem: str) -> list[str]:
+    """Display names of a task's [[wikilinks]] (e.g. the person on a #waiting item), skipping
+    the backlink to the note the task lives in, which the project/meeting pill already shows."""
+    out = []
+    for raw in BD.LINK_RE.findall(body):
+        target, _, alias = raw.partition("|")
+        if target.split("#")[0].strip() == own_stem:
+            continue
+        out.append((alias or target).strip())
+    return out
+
+
 def iter_tasks_with_location(vault: Path):
     """Yield one dict per task checkbox line across all CONTENT folders (README excluded)."""
     vault = Path(vault)
@@ -45,6 +57,7 @@ def iter_tasks_with_location(vault: Path):
                     "line_text": raw_line.rstrip(),
                     "done": m.group("m").lower() == "x",
                     "text": _clean_no_links(body),
+                    "links": _links_except_self(body, p.stem),
                     "tags": tags,
                     "fields": fields,
                     "project": p.stem if d == "10 Projects" else None,
@@ -132,6 +145,7 @@ def collect_state(vault: Path) -> dict:
             waiting.append({
                 "text": t["text"], "file": t["file"], "line_text": t["line_text"],
                 "project": t["project"], "meeting": t["meeting"], "since": fields.get("since"),
+                "links": t["links"],
             })
             continue
         if "#next" not in tags:
@@ -148,6 +162,7 @@ def collect_state(vault: Path) -> dict:
         entry = {
             "text": t["text"], "file": t["file"], "line_text": t["line_text"],
             "project": t["project"], "meeting": t["meeting"], "context": ctx, "due": due,
+            "links": t["links"],
         }
         tasks_by_context.setdefault(ctx, []).append(entry)
         if due:
@@ -175,6 +190,7 @@ def collect_state(vault: Path) -> dict:
         meetings = meetings[:8]
 
     return {
+        "vault_name": vault.resolve().name,
         "inbox_count": inbox_count,
         "tasks_by_context": tasks_by_context,
         "waiting": waiting,
