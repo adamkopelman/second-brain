@@ -2,8 +2,8 @@
 // Pure rendering/filtering logic for the local dashboard. No DOM, no fetch —
 // runs identically under Node's test runner and in the browser.
 (function (root) {
-  var PAGES = ["today", "tasks", "waiting", "projects", "meetings"];
-  var PAGE_LABELS = { today: "Today", tasks: "Tasks", waiting: "Waiting", projects: "Projects", meetings: "Meetings" };
+  var PAGES = ["today", "tasks", "inbox", "waiting", "projects"];
+  var PAGE_LABELS = { today: "Today", week: "Week", tasks: "Tasks", inbox: "Inbox", waiting: "Waiting", projects: "Projects" };
   var CTX_ORDER = ["#computer", "#phone", "#errands", "#home", "#office", "#anywhere", "#agenda"];
   var WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -74,13 +74,13 @@
   }
 
   // What the Today page lists besides due tasks. `alert` items need doing; the rest are reminders.
-  // Each item carries `page` (a tab to jump to) or `project` (opens its detail), or neither.
+  // Each item carries `page` (a tab to jump to), `project` (opens its detail), `action` (runs
+  // something, e.g. transcription), or none of these.
   function attentionItems(state, today) {
     var items = [];
     var inbox = state.inbox_count || 0;
     if (inbox) {
-      items.push({ key: "inbox", alert: true, text: plural(inbox, "inbox item") + " to process",
-        hint: "run /gtd-process-inbox" });
+      items.push({ key: "inbox", alert: true, page: "inbox", text: plural(inbox, "inbox item") + " to process" });
     }
     var triage = ((state.tasks_by_context || {})["#unknown"] || []).length;
     if (triage) {
@@ -101,9 +101,12 @@
       var s = meetingStatus(m);
       if (s) counts[s]++;
     });
-    if (counts.failed) items.push({ key: "mtg-failed", alert: true, page: "meetings", text: plural(counts.failed, "meeting") + " failed to transcribe" });
-    if (counts.transcribe) items.push({ key: "mtg-transcribe", alert: true, page: "meetings", text: plural(counts.transcribe, "meeting") + " to transcribe" });
-    if (counts.summarize) items.push({ key: "mtg-summarize", alert: true, page: "meetings", text: plural(counts.summarize, "meeting") + " to summarize" });
+    if (counts.failed) items.push({ key: "mtg-failed", alert: true, text: plural(counts.failed, "meeting") + " failed to transcribe",
+      hint: "see the note in Obsidian" });
+    if (counts.transcribe) items.push({ key: "mtg-transcribe", alert: true, action: "transcribe",
+      text: plural(counts.transcribe, "meeting") + " to transcribe" });
+    if (counts.summarize) items.push({ key: "mtg-summarize", alert: true, text: plural(counts.summarize, "meeting") + " to summarize",
+      hint: "run /gtd-summarize-meetings" });
 
     var waiting = (state.waiting || []).length;
     if (waiting) items.push({ key: "waiting", alert: false, page: "waiting", text: plural(waiting, "waiting-for item") + " to follow up" });
@@ -196,6 +199,25 @@
     return items.filter(function (x) { return (x.name || "").toLowerCase().indexOf(q) !== -1; });
   }
 
+  function filterInbox(items, query) {
+    if (!query) return items;
+    var q = query.toLowerCase();
+    return items.filter(function (it) { return (it.text || "").toLowerCase().indexOf(q) !== -1; });
+  }
+
+  function renderInbox(items, query, vaultName) {
+    if (!items.length) return '<p class="empty">Inbox zero — nothing to process.</p>';
+    var shown = filterInbox(items, query);
+    if (!shown.length) return '<p class="empty">No inbox items match your search.</p>';
+    return '<p class="page-note">Clarify these with <code>/gtd-process-inbox</code> in Claude Code · ' +
+      "<kbd>Enter</kbd> opens one in Obsidian</p>" +
+      '<ul class="inbox-list">' + shown.map(function (it) {
+        return '<li class="nav-item" data-key="' + escapeHtml("inbox|" + it.file) + '">' +
+          '<a href="' + escapeHtml(obsidianUrl(vaultName, it.file)) + '" dir="auto">' + escapeHtml(it.text) + "</a>" +
+          (it.captured ? '<span class="due">' + escapeHtml(it.captured) + "</span>" : "") + "</li>";
+      }).join("") + "</ul>";
+  }
+
   function renderProjects(projects) {
     if (!projects.length) return '<p class="empty">None.</p>';
     return "<ul>" + projects.map(function (p) {
@@ -232,10 +254,13 @@
       var text = escapeHtml(a.text);
       var body = a.project
         ? '<a href="#" class="proj-open" data-name="' + escapeHtml(a.project) + '">' + text + "</a>"
-        : (a.page ? '<a href="#' + a.page + '">' + text + "</a>" : "<span>" + text + "</span>");
+        : a.page ? '<a href="#' + a.page + '">' + text + "</a>"
+        : a.action ? '<a href="#" class="att-run" data-action="' + escapeHtml(a.action) + '">' + text + "</a>"
+        : "<span>" + text + "</span>";
       var hint = a.hint ? ' <span class="att-hint">' + escapeHtml(a.hint) + "</span>" : "";
-      var navAttrs = (a.project || a.page) ? ' nav-item" data-key="' + escapeHtml("att|" + a.key) + '"' : '"';
-      return '<li class="att' + (a.alert ? " att-alert" : "") + navAttrs + ">" + body + hint + "</li>";
+      var nav = a.project || a.page || a.action;
+      return '<li class="att' + (a.alert ? " att-alert" : "") + (nav ? ' nav-item" data-key="' + escapeHtml("att|" + a.key) + '"' : '"') +
+        ">" + body + hint + "</li>";
     }).join("") + "</ul>";
   }
 
@@ -279,10 +304,7 @@
         count: filterByName(state.active_projects || [], query).length + filterByName(state.someday_projects || [], query).length,
         alert: (state.active_projects || []).some(function (p) { return p.review_overdue; }),
       },
-      meetings: {
-        count: filterByName(state.meetings || [], query).length,
-        alert: (state.meetings || []).some(function (m) { return meetingStatus(m) !== null; }),
-      },
+      inbox: { count: filterInbox(state.inbox_items || [], query).length, alert: false },
     };
   }
 
@@ -435,38 +457,15 @@
     return '<ul class="task-list">' + items.map(function (t) { return taskLine(t, today, pending); }).join("") + "</ul>";
   }
 
-  function renderMeetings(meetings, vaultName) {
-    if (!meetings || !meetings.length) return '<p class="empty">No meetings yet.</p>';
-    return "<ul>" + meetings.map(function (m) {
-      // no status at all = a note written by hand, with no recording to transcribe
-      var tPill = !m.transcription_status ? ""
-        : m.transcription_status === "done"
-          ? '<span class="pill">transcribed</span>'
-          : (m.transcription_status === "failed"
-              ? '<span class="pill overdue">transcription failed</span>'
-              : '<span class="pill overdue">pending transcription</span>');
-      var sPill = m.transcription_status === "done"
-        ? (m.summary_status === "done"
-            ? '<span class="pill">summarized</span>'
-            : '<span class="pill overdue">pending summary</span>')
-        : "";
-      return '<li class="nav-item" data-key="' + escapeHtml("mtg|" + m.file) + '">' +
-        '<a href="' + escapeHtml(obsidianUrl(vaultName, m.file)) + '">' +
-        escapeHtml(m.name) + "</a>" + tPill + sPill + "</li>";
-    }).join("") + "</ul>";
-  }
-
   // One HTML string per page plus the tab-bar data; the search query filters every page.
   function render(state, query, today, pending) {
-    var meetings = filterByName(state.meetings || [], query);
     return {
       tabs: tabInfo(state, query, today),
       todayHtml: renderToday(state, query, today, pending),
       tasksHtml: renderTasksPage(state, query, today, pending),
+      inboxHtml: renderInbox(state.inbox_items || [], query, state.vault_name),
       waitingHtml: renderSimpleList(state.waiting || [], today, query, pending, "Not waiting on anything."),
       projectsHtml: renderProjectsPage(state, query),
-      meetingsHtml: query && !meetings.length ? '<p class="empty">No meetings match your search.</p>'
-        : renderMeetings(meetings, state.vault_name),
     };
   }
 
@@ -477,7 +476,7 @@
     attentionItems: attentionItems, tabInfo: tabInfo, renderTabs: renderTabs, shortcutsHtml: shortcutsHtml,
     keyAction: keyAction, filterBannerHtml: filterBannerHtml, pickHorizontal: pickHorizontal,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
-    renderNeedsTriage: renderNeedsTriage, renderMeetings: renderMeetings,
+    renderNeedsTriage: renderNeedsTriage,
   };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;

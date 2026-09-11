@@ -52,7 +52,7 @@ test("render produces per-tab counts for a populated state", () => {
   };
   const out = L.render(state, "", "2026-09-10");
   const counts = Object.fromEntries(Object.entries(out.tabs).map(([k, v]) => [k, v.count]));
-  assert.deepEqual(counts, { today: 1, tasks: 2, waiting: 1, projects: 1, meetings: 0 });
+  assert.deepEqual(counts, { today: 1, tasks: 2, inbox: 0, waiting: 1, projects: 1 });
   assert.match(out.tasksHtml, /Finalize homepage wireframe/);
   assert.match(out.projectsHtml, /Website Redesign/);
   assert.match(out.projectsHtml, /Someday \/ Maybe<\/h2><p class="empty">None\.<\/p>/);
@@ -202,19 +202,6 @@ test("renderNeedsTriage shows an empty state when nothing needs triage", () => {
   assert.equal(html, '<p class="empty">Nothing to triage.</p>');
 });
 
-test("renderMeetings lists meetings with status pills and an Obsidian link", () => {
-  const meetings = [
-    { name: "2026-09-10 Sync", file: "Meetings/2026-09-10 Sync.md", date: "2026-09-10",
-      transcription_status: "done", summary_status: "pending" },
-    { name: "2026-09-09 Standup", file: "Meetings/2026-09-09 Standup.md", date: "2026-09-09",
-      transcription_status: "pending", summary_status: "pending" },
-  ];
-  const html = L.renderMeetings(meetings, "second brain");
-  assert.match(html, /2026-09-10 Sync/);
-  assert.match(html, /pending summary/);
-  assert.match(html, /pending transcription/);
-  assert.match(html, /obsidian:\/\/open\?vault=second%20brain&amp;file=Meetings%2F2026-09-10%20Sync\.md/);
-});
 
 test("obsidianUrl addresses a note by vault name and vault-relative path", () => {
   assert.equal(L.obsidianUrl("second brain", "Meetings/2026-09-10 Sync.md"),
@@ -262,27 +249,15 @@ test("search also filters Waiting and the Today page, matching linked names", ()
   assert.equal(out.tabs.today.count, 0);
 });
 
-test("renderMeetings shows no transcription pill for a hand-written note with no recording", () => {
-  const html = L.renderMeetings([{ name: "2026-09-08 Kickoff", file: "Meetings/2026-09-08 Kickoff.md",
-    date: "2026-09-08", transcription_status: null, summary_status: null }], "v");
-  assert.match(html, /2026-09-08 Kickoff/);
-  assert.doesNotMatch(html, /class="pill/);
-});
 
-test("renderMeetings shows an empty state with no meetings", () => {
-  assert.equal(L.renderMeetings([]), '<p class="empty">No meetings yet.</p>');
-});
 
-test("render omits the Needs-triage section when nothing needs triage, and renders meetings", () => {
+test("render omits the Needs-triage section when nothing needs triage", () => {
   const state = {
     inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [],
     active_projects: [], someday_projects: [],
-    meetings: [{ name: "Sync", file: "Meetings/Sync.md", date: "2026-09-10",
-      transcription_status: "done", summary_status: "done" }],
   };
   const out = L.render(state, "", "2026-09-10");
   assert.doesNotMatch(out.tasksHtml, /Needs triage/);
-  assert.match(out.meetingsHtml, /Sync/);
 });
 
 test("the Tasks page puts #unknown tasks in a Needs-triage section above the contexts", () => {
@@ -344,6 +319,9 @@ test("attentionItems covers inbox, triage, reviews, meetings, waiting and undate
   const items = L.attentionItems(state, "2026-09-11");
   const byKey = Object.fromEntries(items.map((a) => [a.key, a]));
   assert.equal(byKey.inbox.text, "2 inbox items to process");
+  assert.equal(byKey.inbox.page, "inbox");
+  assert.equal(byKey["mtg-transcribe"].action, "transcribe");
+  assert.match(byKey["mtg-summarize"].hint, /gtd-summarize-meetings/);
   assert.equal(byKey.triage.page, "tasks");
   assert.equal(byKey["review|Trip"].alert, true);
   assert.equal(byKey["review|Site"].text, "Site: review due Tue");
@@ -371,7 +349,7 @@ test("the Today page shows only non-empty groups and says so when nothing is due
   assert.match(html2, /Needs attention<\/h2>.*1 inbox item to process/);
 });
 
-test("tabInfo flags overdue work, triage, overdue reviews and pending meetings", () => {
+test("tabInfo flags overdue work, triage and overdue reviews", () => {
   const state = { inbox_count: 0, waiting: [], someday_projects: [],
     tasks_by_context: { "#home": [{ text: "Fix tap", file: "f.md", line_text: "t", due: "2026-09-01" }] },
     due_soon: [{ text: "Fix tap", file: "f.md", line_text: "t", due: "2026-09-01" }],
@@ -382,12 +360,11 @@ test("tabInfo flags overdue work, triage, overdue reviews and pending meetings",
   assert.equal(info.tasks.alert, true);
   assert.equal(info.waiting.alert, false);
   assert.equal(info.projects.alert, true);
-  assert.equal(info.meetings.alert, true);
 });
 
 test("renderTabs numbers the pages, marks the current one and shows alert dots", () => {
   const info = { today: { count: 1, alert: true }, tasks: { count: 3, alert: false },
-    waiting: { count: 0, alert: false }, projects: { count: 2, alert: false }, meetings: { count: 0, alert: false } };
+    waiting: { count: 0, alert: false }, projects: { count: 2, alert: false }, inbox: { count: 0, alert: false } };
   const html = L.renderTabs(info, "tasks");
   assert.match(html, /href="#today" class="tab"><kbd>1<\/kbd>Today <span class="tab-n">1<\/span><span class="dot"/);
   assert.match(html, /href="#tasks" class="tab current" aria-current="page"><kbd>2<\/kbd>Tasks/);
@@ -398,22 +375,24 @@ test("every navigable row carries a stable data-key", () => {
   const t = { text: "Call", file: "f.md", line_text: "- [ ] Call #next #phone" };
   const state = { inbox_count: 0, waiting: [], due_soon: [], someday_projects: [],
     tasks_by_context: { "#phone": [t] }, active_projects: [{ name: "Site" }],
-    meetings: [{ name: "Sync", file: "Meetings/Sync.md" }] };
+    inbox_items: [{ file: "00 Inbox/a.md", text: "Idea", captured: "2026-09-11" }] };
   const out = L.render(state, "", "2026-09-11");
   assert.match(out.tasksHtml, /class="task nav-item" data-key="f\.md\|- \[ \] Call #next #phone"/);
   assert.match(out.projectsHtml, /class="nav-item" data-key="proj\|Site"/);
-  assert.match(out.meetingsHtml, /class="nav-item" data-key="mtg\|Meetings\/Sync\.md"/);
+  assert.match(out.inboxHtml, /class="nav-item" data-key="inbox\|00 Inbox\/a\.md"/);
 });
 
-test("search filters projects and meetings by name", () => {
+test("search filters projects and inbox items", () => {
   const state = { inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [],
     active_projects: [{ name: "Website Redesign" }, { name: "Plan Family Trip" }],
     someday_projects: [{ name: "Learn Spanish" }],
-    meetings: [{ name: "Vendor sync", file: "Meetings/a.md" }] };
+    inbox_items: [{ file: "00 Inbox/a.md", text: "Buy trip insurance" }, { file: "00 Inbox/b.md", text: "Idea" }] };
   const out = L.render(state, "trip", "2026-09-11");
   assert.match(out.projectsHtml, /Plan Family Trip/);
   assert.doesNotMatch(out.projectsHtml, /Website Redesign|Learn Spanish/);
-  assert.match(out.meetingsHtml, /No meetings match your search/);
+  assert.match(out.inboxHtml, /Buy trip insurance/);
+  assert.doesNotMatch(out.inboxHtml, /Idea/);
+  assert.equal(out.tabs.inbox.count, 1);
   assert.equal(out.tabs.projects.count, 1);
 });
 
@@ -479,4 +458,22 @@ test("pickHorizontal moves to the level row in the nearest column, or stays put 
   assert.equal(L.pickHorizontal(withTriage, 1, 1), 2);
   assert.equal(L.pickHorizontal(withTriage, 2, -1), 1);
   assert.equal(L.pickHorizontal(withTriage, 0, 1), 2);
+});
+
+test("renderInbox lists captures with Obsidian links and says so when empty", () => {
+  const items = [{ file: "00 Inbox/2026-09-10 call-plumber.md", text: "להתקשר לאינסטלטור", captured: "2026-09-10" }];
+  const html = L.render({ inbox_count: 1, inbox_items: items, tasks_by_context: {}, waiting: [], due_soon: [],
+    active_projects: [], someday_projects: [], vault_name: "second-brain" }, "", "2026-09-11").inboxHtml;
+  assert.match(html, /href="obsidian:\/\/open\?vault=second-brain&amp;file=00%20Inbox%2F2026-09-10%20call-plumber\.md" dir="auto">להתקשר לאינסטלטור/);
+  assert.match(html, /2026-09-10/);
+  assert.match(html, /gtd-process-inbox/);
+  const empty = L.render({ inbox_count: 0, inbox_items: [], tasks_by_context: {}, waiting: [], due_soon: [],
+    active_projects: [], someday_projects: [] }, "", "2026-09-11").inboxHtml;
+  assert.match(empty, /Inbox zero/);
+});
+
+test("a pending-transcription attention item is an action link", () => {
+  const html = L.render({ inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [], active_projects: [],
+    someday_projects: [], meetings: [{ name: "A", transcription_status: "pending" }] }, "", "2026-09-11").todayHtml;
+  assert.match(html, /<a href="#" class="att-run" data-action="transcribe">1 meeting to transcribe<\/a>/);
 });

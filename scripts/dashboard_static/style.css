@@ -51,7 +51,7 @@ h1 { font-size: 1rem; margin: 0; }
 /* ---- pages ---- */
 main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 48px; }
 /* single-list pages read better narrow, so a row's project/date stays near its text */
-#today, #waiting, #projects, #meetings { max-width: 760px; }
+#today, #inbox, #waiting, #projects { max-width: 760px; }
 .section { margin-bottom: 22px; }
 .filter-banner {
   margin: 0 0 14px; padding: 6px 10px; border-radius: 8px; font-size: 0.85rem;
@@ -79,8 +79,8 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 .ctx-n { font-weight: 400; margin-left: 4px; }
 
-/* rows: tasks, projects, meetings, attention items */
-.task-list li, #projects li, #meetings li, .att-list li {
+/* rows: tasks, projects, inbox items, attention items */
+.task-list li, #projects li, .inbox-list li, .att-list li {
   display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px;
   padding: 5px 6px; border-bottom: 1px solid var(--border); border-radius: 4px; font-size: 0.9rem;
 }
@@ -120,11 +120,8 @@ ul { list-style: none; margin: 0; padding: 0; }
 .meeting { color: var(--accent); font-size: 0.78rem; }
 .meeting-open { cursor: pointer; }
 .meeting-open:hover { text-decoration: underline; }
-#transcribe-btn {
-  border: 1px solid var(--accent); color: var(--accent); font-weight: 600; background: var(--card-bg);
-  margin-bottom: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.85rem;
-}
-#transcribe-btn:disabled { opacity: 0.6; cursor: default; }
+.page-note { color: var(--muted); font-size: 0.85rem; margin: 0 0 10px; }
+.inbox-list a { flex: 1 1 12em; color: var(--text); }
 
 /* ---- modals ---- */
 .modal { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; padding: 16px; }
