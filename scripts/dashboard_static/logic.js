@@ -8,6 +8,7 @@
   var WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  var MAX_REVIEW_LINES = 3;
 
   function escapeHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -96,15 +97,24 @@
       items.push({ key: "triage", alert: true, page: "tasks",
         text: plural(triage, "task") + " from meetings need" + (triage === 1 ? "s" : "") + " a context" });
     }
+    // project reviews: a few are listed by name; more than that is one line pointing at Projects
+    // (one line per project flooded Today with dozens of them)
     var weekEnd = addDays(today, 7);
+    var overdueReviews = [], soonReviews = [];
     (state.active_projects || []).forEach(function (p) {
       if (p.review_overdue) {
-        items.push({ key: "review|" + p.name, alert: true, project: p.name, text: p.name + ": review overdue" });
+        overdueReviews.push({ key: "review|" + p.name, alert: true, project: p.name, text: p.name + ": review overdue" });
       } else if (p.review && ISO_DATE.test(p.review) && p.review <= weekEnd) {
-        items.push({ key: "review|" + p.name, alert: false, project: p.name,
+        soonReviews.push({ key: "review|" + p.name, alert: false, project: p.name,
           text: p.name + ": review due " + dueLabel(p.review, today) });
       }
     });
+    if (overdueReviews.length > MAX_REVIEW_LINES) {
+      items.push({ key: "reviews-overdue", alert: true, page: "projects",
+        text: plural(overdueReviews.length, "project review") + " overdue" });
+    } else {
+      items = items.concat(overdueReviews);
+    }
     var counts = { failed: 0, transcribe: 0, summarize: 0 };
     (state.meetings || []).forEach(function (m) {
       var s = meetingStatus(m);
@@ -116,6 +126,13 @@
       text: plural(counts.transcribe, "meeting") + " to transcribe" });
     if (counts.summarize) items.push({ key: "mtg-summarize", alert: true, text: plural(counts.summarize, "meeting") + " to summarize",
       hint: "run /gtd-summarize-meetings" });
+
+    if (soonReviews.length > MAX_REVIEW_LINES) {
+      items.push({ key: "reviews-soon", alert: false, page: "projects",
+        text: plural(soonReviews.length, "project review") + " due this week" });
+    } else {
+      items = items.concat(soonReviews);
+    }
 
     var waiting = (state.waiting || []).length;
     if (waiting) items.push({ key: "waiting", alert: false, page: "waiting", text: plural(waiting, "waiting-for item") + " to follow up" });
@@ -332,7 +349,8 @@
 
   function renderToday(state, query, today, pending, now) {
     var b = bucketDue(filterTasks(state.due_soon || [], query), today);
-    var att = attentionItems(state, today);
+    var q = (query || "").toLowerCase();
+    var att = attentionItems(state, today).filter(function (a) { return !q || a.text.toLowerCase().indexOf(q) !== -1; });
     var alerts = att.filter(function (a) { return a.alert; });
     var reminders = att.filter(function (a) { return !a.alert; });
     function list(items) {
@@ -343,6 +361,8 @@
     if (meetings.length) {
       html += section("Meetings today", '<ul class="event-list">' +
         meetings.map(function (ev) { return eventLine(ev, now); }).join("") + "</ul>");
+    } else if (state.calendar && state.calendar.status === "ok" && !query) {
+      html += '<p class="cal-note">No meetings today.</p>'; // so a connected-but-empty calendar doesn't look broken
     }
     var due = "";
     if (b.overdue.length) due += section("Overdue", list(b.overdue), "section-alert");
@@ -362,7 +382,8 @@
     return label;
   }
 
-  // A column per day (today + 6) with that day's meetings and due tasks; "Overdue" first if needed.
+  // One column per day, today + 6, with that day's meetings and due tasks. Overdue tasks stay on
+  // Today: as an extra column here they made the grid wrap and pushed half the week off-screen.
   function renderWeek(state, query, today, pending, now) {
     var tasks = filterTasks(state.due_soon || [], query);
     function col(title, events, due, cls) {
@@ -371,15 +392,17 @@
       return '<div class="day-col' + (cls ? " " + cls : "") + '"><div class="ctx-h">' + escapeHtml(title) + "</div>" +
         (body || '<p class="empty">Nothing scheduled</p>') + "</div>";
     }
+    var overdue = tasks.filter(function (t) { return t.due < today; }).length;
     var cols = [];
-    var overdue = tasks.filter(function (t) { return t.due < today; });
-    if (overdue.length) cols.push(col("Overdue", [], overdue, "day-overdue"));
     for (var i = 0; i < 7; i++) {
       var date = addDays(today, i);
       var due = tasks.filter(function (t) { return t.due === date; });
       cols.push(col(dayHeading(date, today), filterEvents(eventsOn(state.calendar, date), query), due, i === 0 ? "day-today" : ""));
     }
-    return calendarNote(state.calendar) + '<div class="week-grid">' + cols.join("") + "</div>";
+    var overdueNote = overdue
+      ? '<p class="cal-note week-overdue"><a href="#today">' + plural(overdue, "overdue task") + "</a> — on the Today page</p>"
+      : "";
+    return calendarNote(state.calendar) + overdueNote + '<div class="week-grid">' + cols.join("") + "</div>";
   }
 
   // Per-tab counts (respecting the search query) and whether the tab should show a red dot.
@@ -441,9 +464,10 @@
   // within COL_SLACK px count as one column (an indented section, like Needs triage, isn't its own).
   var COL_SLACK = 40;
 
-  function pickHorizontal(rects, from, dir) {
+  // goalY (optional): the height to aim for, remembered across consecutive h/l presses.
+  function pickHorizontal(rects, from, dir, goalY) {
     var cur = rects[from];
-    var cy = (cur.top + cur.bottom) / 2;
+    var cy = goalY != null ? goalY : (cur.top + cur.bottom) / 2;
     var colLeft = null;
     rects.forEach(function (r) {
       var ahead = dir > 0 ? r.left > cur.left + COL_SLACK : r.left < cur.left - COL_SLACK;

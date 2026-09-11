@@ -52,12 +52,13 @@
     if (!state) return;
     var out = DashboardLogic.render(state, query, today(), pendingDeletes, DashboardLogic.localDateTime(new Date()).slice(0, 16));
     document.getElementById("tabs").innerHTML = DashboardLogic.renderTabs(out.tabs, page);
-    document.getElementById("today").innerHTML = out.todayHtml;
-    document.getElementById("week").innerHTML = out.weekHtml;
-    document.getElementById("tasks").innerHTML = out.tasksHtml;
-    document.getElementById("waiting").innerHTML = out.waitingHtml;
-    document.getElementById("projects").innerHTML = out.projectsHtml;
-    document.getElementById("inbox").innerHTML = out.inboxHtml;
+    document.getElementById("body-today").innerHTML = out.todayHtml;
+    document.getElementById("body-week").innerHTML = out.weekHtml;
+    document.getElementById("body-tasks").innerHTML = out.tasksHtml;
+    document.getElementById("body-waiting").innerHTML = out.waitingHtml;
+    document.getElementById("body-projects").innerHTML = out.projectsHtml;
+    document.getElementById("body-inbox").innerHTML = out.inboxHtml;
+    fillProjectChoices();
     PAGES.forEach(function (p) {
       document.getElementById("page-" + p).hidden = p !== page;
     });
@@ -88,7 +89,7 @@
     i = Math.min(i, items.length - 1);
     var el = items[i];
     el.classList.add("selected");
-    sel = { key: el.getAttribute("data-key"), index: i };
+    sel = { key: el.getAttribute("data-key"), index: i, goalY: null };
     if (scroll) {
       // the first row means "top of the page": show the section titles above it too
       if (i === 0) window.scrollTo(0, 0);
@@ -121,8 +122,14 @@
     if (!items.length) return false;
     if (sel.index < 0) { select(0, true); return true; }
     var rects = items.map(function (el) { return el.getBoundingClientRect(); });
-    var i = DashboardLogic.pickHorizontal(rects, sel.index, dir);
-    if (i >= 0) select(i, true);
+    var cur = rects[sel.index];
+    // aim for the height where this run of h/l presses started (page coordinates survive scrolling)
+    var goal = sel.goalY != null ? sel.goalY : (cur.top + cur.bottom) / 2 + window.scrollY;
+    var i = DashboardLogic.pickHorizontal(rects, sel.index, dir, goal - window.scrollY);
+    if (i >= 0) {
+      select(i, true);
+      sel.goalY = goal;
+    }
     return true;
   }
 
@@ -141,9 +148,17 @@
 
   // ---- data ----
 
+  var lastRaw = null, lastMinute = null;
+
+  // Redraw only when the vault (or the minute, which dims past meetings) changed — redrawing every
+  // poll made hover states flicker.
   function refresh() {
-    fetch("/api/state").then(function (r) { return r.json(); }).then(function (data) {
-      state = data;
+    fetch("/api/state").then(function (r) { return r.text(); }).then(function (raw) {
+      var minute = DashboardLogic.localDateTime(new Date()).slice(0, 16);
+      if (raw === lastRaw && minute === lastMinute) return;
+      lastRaw = raw;
+      lastMinute = minute;
+      state = JSON.parse(raw);
       renderAll();
     });
   }
@@ -154,8 +169,10 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then(function (r) {
-      if (!r.ok) throw new Error("request failed: " + r.status);
-      return r.json();
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) throw new Error(data.error || "request failed: " + r.status);
+        return data;
+      });
     });
   }
 
@@ -258,9 +275,23 @@
     openDetailModal("Keyboard shortcuts", DashboardLogic.shortcutsHtml());
   }
 
+  var quickAddError = document.getElementById("quick-add-error");
+
   function openQuickAdd() {
+    quickAddError.hidden = true;
     modal.classList.remove("hidden");
     document.getElementById("quick-add-text").focus();
+  }
+
+  // Suggestions for the quick-add Project field, so a name can't be mistyped.
+  var projectChoices = "";
+  function fillProjectChoices() {
+    var names = (state.active_projects || []).concat(state.someday_projects || []).map(function (p) { return p.name; });
+    var html = names.map(function (n) { return '<option value="' + DashboardLogic.escapeHtml(n) + '">'; }).join("");
+    if (html !== projectChoices) {
+      projectChoices = html;
+      document.getElementById("project-choices").innerHTML = html;
+    }
   }
 
   function closeQuickAdd() {
@@ -319,11 +350,13 @@
 
     var saveBtn = e.target.closest(".detail-save");
     if (saveBtn) {
-      var newText = document.getElementById("detail-text").value.trim();
-      var newDue = document.getElementById("detail-due").value;
+      var textEl = document.getElementById("detail-text");
+      var newText = textEl.value.trim();
+      if (!newText) { textEl.focus(); return; } // an empty line would make the task vanish
       var ctxEl = document.getElementById("detail-context");
-      var editBody = { file: saveBtn.getAttribute("data-file"), line_text: saveBtn.getAttribute("data-line"), new_text: newText };
-      if (newDue) editBody.new_due = newDue;
+      // always send the date: an emptied field means "remove the due date"
+      var editBody = { file: saveBtn.getAttribute("data-file"), line_text: saveBtn.getAttribute("data-line"),
+        new_text: newText, new_due: document.getElementById("detail-due").value };
       if (ctxEl) editBody.new_context = ctxEl.value;
       post("/api/edit-task", editBody).then(function () { closeDetailModal(); refresh(); })
         .catch(function () { closeDetailModal(); refresh(); });
@@ -384,7 +417,7 @@
       return;
     }
     // Enter in a task's detail fields saves it
-    if (e.key === "Enter" && tag === "input" && detailBody.contains(e.target)) {
+    if (e.key === "Enter" && (tag === "input" || tag === "select") && detailBody.contains(e.target)) {
       var save = detailBody.querySelector(".detail-save");
       if (save) { e.preventDefault(); save.click(); }
       return;
@@ -533,13 +566,19 @@
     if (!text) return;
     var context = document.getElementById("quick-add-context").value;
     var project = document.getElementById("quick-add-project").value.trim() || undefined;
+    quickAddError.hidden = true;
     post("/api/new-task", { text: text, context: context, project: project }).then(function () {
       document.getElementById("quick-add-text").value = "";
       document.getElementById("quick-add-project").value = "";
       closeQuickAdd();
       refresh();
-    }).catch(function () {
-      refresh();
+    }).catch(function (err) {
+      // e.g. "project not found: X" — say so instead of silently doing nothing
+      quickAddError.textContent = /project not found/.test(err.message)
+        ? "No project called “" + project + "”. Pick one from the list, or leave it empty to capture to the inbox."
+        : "Couldn't add the task: " + err.message;
+      quickAddError.hidden = false;
+      document.getElementById("quick-add-project").focus();
     });
   });
 

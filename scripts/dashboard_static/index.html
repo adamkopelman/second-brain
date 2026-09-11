@@ -22,12 +22,12 @@
 </header>
 <main>
   <div id="filter-banner" class="filter-banner" hidden></div>
-  <section class="page" id="page-today"><div id="today"></div></section>
-  <section class="page" id="page-week" hidden><div id="week"></div></section>
-  <section class="page" id="page-tasks" hidden><div id="tasks"></div></section>
-  <section class="page" id="page-inbox" hidden><div id="inbox"></div></section>
-  <section class="page" id="page-waiting" hidden><div id="waiting"></div></section>
-  <section class="page" id="page-projects" hidden><div id="projects"></div></section>
+  <section class="page" id="page-today"><div id="body-today"></div></section>
+  <section class="page" id="page-week" hidden><div id="body-week"></div></section>
+  <section class="page" id="page-tasks" hidden><div id="body-tasks"></div></section>
+  <section class="page" id="page-inbox" hidden><div id="body-inbox"></div></section>
+  <section class="page" id="page-waiting" hidden><div id="body-waiting"></div></section>
+  <section class="page" id="page-projects" hidden><div id="body-projects"></div></section>
 </main>
 <div id="quick-add" class="modal hidden">
   <form id="quick-add-form">
@@ -45,7 +45,9 @@
       <option value="anywhere">anywhere</option>
       <option value="agenda">agenda</option>
     </select>
-    <input id="quick-add-project" type="text" placeholder="Project (optional)" autocomplete="off" dir="auto">
+    <input id="quick-add-project" type="text" placeholder="Project (optional)" autocomplete="off" dir="auto" list="project-choices">
+    <datalist id="project-choices"></datalist>
+    <p id="quick-add-error" class="form-error" hidden></p>
     <button type="submit">Add task</button>
   </form>
 </div>

@@ -525,13 +525,15 @@ test("the Week page has a column per day with that day's meetings and due tasks"
   ] };
   const html = L.render(state, "", "2026-09-11", {}, "2026-09-11T08:00").weekHtml;
   const heads = [...html.matchAll(/<div class="ctx-h">([^<]*)<\/div>/g)].map((m) => m[1]);
-  assert.deepEqual(heads, ["Overdue", "Today · Fri 11 Sep", "Tomorrow · Sat 12 Sep", "Sun 13 Sep", "Mon 14 Sep",
+  // exactly the 7 days: an Overdue column made the grid wrap and pushed half the week off-screen
+  assert.deepEqual(heads, ["Today · Fri 11 Sep", "Tomorrow · Sat 12 Sep", "Sun 13 Sep", "Mon 14 Sep",
     "Tue 15 Sep", "Wed 16 Sep", "Thu 17 Sep"]);
   const sat = html.slice(html.indexOf("Tomorrow · Sat"), html.indexOf("Sun 13 Sep"));
   assert.match(sat, /Tomorrow thing/);
   assert.match(sat, /Pay rent/);
   assert.doesNotMatch(html, /Next week/); // a week out: not on this 7-day page
-  assert.match(html.slice(0, html.indexOf("Today ·")), /Late one/);
+  assert.doesNotMatch(html, /Late one/);  // overdue tasks live on Today…
+  assert.match(html, /<a href="#today">1 overdue task<\/a> — on the Today page/); // …and the Week page says so
   assert.match(html, /Nothing scheduled/);
 });
 
@@ -555,4 +557,38 @@ test("recordingUrl encodes a Hebrew title and attendees for the upload", () => {
     "/api/record-meeting?started=2026-09-11T14%3A00%3A05");
   assert.equal(L.recordingUrl({ started: "2026-09-11T14:00:05", title: "סנכרון", attendees: "Dana; Omer" }),
     "/api/record-meeting?started=2026-09-11T14%3A00%3A05&title=%D7%A1%D7%A0%D7%9B%D7%A8%D7%95%D7%9F&attendees=Dana%3B%20Omer");
+});
+
+test("pickHorizontal can aim at a remembered height, so h then l lands back on the same row", () => {
+  const r = (left, top) => ({ left, right: left + 100, top, bottom: top + 20 });
+  // column A is long, column B short: A row at y=400 → l → B's last row (y=40) → h should return to y=400
+  const rects = [r(0, 0), r(0, 200), r(0, 400), r(160, 0), r(160, 40)];
+  assert.equal(L.pickHorizontal(rects, 2, 1), 4);
+  assert.equal(L.pickHorizontal(rects, 4, -1), 0);          // without a goal: nearest to y=40
+  assert.equal(L.pickHorizontal(rects, 4, -1, 410), 2);     // with the remembered y: back to row 3
+});
+
+test("more than 3 overdue project reviews collapse into one line pointing at Projects", () => {
+  const projects = ["A", "B", "C", "D", "E"].map((n) => ({ name: n, review: "2026-09-01", review_overdue: true }));
+  const items = L.attentionItems({ ...BASE, active_projects: projects }, "2026-09-11");
+  const reviews = items.filter((a) => /review/.test(a.text));
+  assert.deepEqual(reviews.map((a) => [a.text, a.page, a.alert]), [["5 project reviews overdue", "projects", true]]);
+  const few = L.attentionItems({ ...BASE, active_projects: projects.slice(0, 3) }, "2026-09-11");
+  assert.equal(few.filter((a) => /review overdue/.test(a.text)).length, 3); // up to 3 stay individual
+});
+
+test("search filters Today's attention and reminder lines too", () => {
+  const state = { ...BASE, inbox_count: 141, waiting: [{ text: "Logo", file: "f.md", line_text: "l" }],
+    active_projects: [{ name: "Copenhagen trip", review_overdue: true }] };
+  const html = L.render(state, "copenhagen", "2026-09-11").todayHtml;
+  assert.match(html, /Copenhagen trip: review overdue/);
+  assert.doesNotMatch(html, /inbox items to process/);
+  assert.doesNotMatch(html, /waiting-for item/);
+});
+
+test("the Today page says 'No meetings today' when the calendar is connected but empty", () => {
+  const html = L.render({ ...BASE, calendar: { status: "ok", events: [] } }, "", "2026-09-11").todayHtml;
+  assert.match(html, /No meetings today/);
+  const searching = L.render({ ...BASE, calendar: { status: "ok", events: [] } }, "x", "2026-09-11").todayHtml;
+  assert.doesNotMatch(searching, /No meetings today/);
 });
