@@ -3,7 +3,11 @@ import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib import request
+from urllib.error import HTTPError
+from urllib.parse import urlencode
 import sys
+
+import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import dashboard_server as S
 
@@ -260,5 +264,53 @@ def test_state_calendar_is_off_without_a_calendar(tmp_path):
         with request.urlopen(f"http://127.0.0.1:{server.server_port}/api/state") as r:
             data = json.loads(r.read())
         assert data["calendar"]["status"] == "off"
+    finally:
+        server.shutdown()
+
+
+def _post_audio(server, query, body, content_type="application/octet-stream"):
+    req = request.Request(f"http://127.0.0.1:{server.server_port}/api/record-meeting?{query}", data=body,
+                          method="POST", headers={"Content-Type": content_type})
+    return request.urlopen(req)
+
+
+def test_record_meeting_saves_a_note_and_wav(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        q = urlencode({"title": "סנכרון", "attendees": "Dana", "started": "2026-09-11T14:00:05"})
+        with _post_audio(server, q, bytes(3200)) as r:
+            data = json.loads(r.read())
+        assert data["note"] == "Meetings/2026-09-11_14-00-05 סנכרון.md"
+        assert (tmp_path / data["recording"]).is_file()
+        assert "# סנכרון" in (tmp_path / data["note"]).read_text(encoding="utf-8")
+    finally:
+        server.shutdown()
+
+
+def test_record_meeting_rejects_json_and_empty_bodies(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with pytest.raises(HTTPError) as e:
+            _post_audio(server, "", b"{}", content_type="application/json")
+        assert e.value.code == 415
+        with pytest.raises(HTTPError) as e:
+            _post_audio(server, "", b"")
+        assert e.value.code == 400
+    finally:
+        server.shutdown()
+
+
+def test_record_meeting_starts_transcription_when_enabled(tmp_path, monkeypatch):
+    _mk_vault(tmp_path)
+    calls = []
+    monkeypatch.setattr(S.W, "start_background_transcription", lambda vault: calls.append(vault))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), S.make_handler(tmp_path, auto_transcribe=True))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with _post_audio(server, "started=2026-09-11T14:00:05", bytes(20)):
+            pass
+        assert calls == [tmp_path]
     finally:
         server.shutdown()

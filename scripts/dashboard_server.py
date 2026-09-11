@@ -2,11 +2,12 @@
 """Local, 127.0.0.1-only dashboard server for the vault. stdlib only."""
 from __future__ import annotations
 import argparse
+import datetime as _dt
 import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dashboard_parser as P
@@ -23,6 +24,7 @@ STATIC_FILES = {
 
 
 CALENDAR_OFF = {"status": "off", "error": None, "events": [], "updated": None}
+MAX_RECORDING_BYTES = 1_000_000_000  # ~8.7 h of 16 kHz mono 16-bit audio
 
 
 def make_handler(vault: Path, calendar=None, auto_transcribe: bool = False):
@@ -42,6 +44,31 @@ def make_handler(vault: Path, calendar=None, auto_transcribe: bool = False):
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length) if length else b"{}"
             return json.loads(raw or b"{}")
+
+        # Body: raw mono little-endian 16-bit PCM at 16 kHz; title/attendees/started ride in the query.
+        def _record_meeting(self):
+            if not self.headers.get("Content-Type", "").startswith("application/octet-stream"):
+                self._send_json({"error": "expected application/octet-stream"}, 415)
+                return
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            if length <= 0 or length > MAX_RECORDING_BYTES:
+                self._send_json({"error": "recording is empty or too large"}, 400)
+                return
+            pcm = self.rfile.read(length)
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                started = _dt.datetime.fromisoformat(q.get("started", [""])[0])
+            except ValueError:
+                started = _dt.datetime.now()
+            try:
+                result = W.save_meeting_recording(vault, pcm, started, q.get("title", [""])[0],
+                                                  q.get("attendees", [""])[0])
+            except ValueError as e:
+                self._send_json({"error": str(e)}, 400)
+                return
+            if auto_transcribe:
+                W.start_background_transcription(vault)
+            self._send_json({"ok": True, **result})
 
         def do_GET(self):
             path = urlparse(self.path).path
@@ -74,6 +101,12 @@ def make_handler(vault: Path, calendar=None, auto_transcribe: bool = False):
             host_header = (self.headers.get("Host") or "").split(":")[0]
             if host_header and host_header not in ("127.0.0.1", "localhost"):
                 self._send_json({"error": "invalid host"}, 403)
+                return
+            if path == "/api/record-meeting":
+                try:
+                    self._record_meeting()
+                except Exception as e:
+                    self._send_json({"error": "internal error: " + str(e)}, 500)
                 return
             content_type = self.headers.get("Content-Type", "")
             if not content_type.startswith("application/json"):
