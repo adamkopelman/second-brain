@@ -9,6 +9,7 @@
   var pendingDeletes = {}; // taskKey -> timeout id; the file is only touched once the undo window closes
   var deleteOrder = [];    // [{file, line}] oldest first, so `u` undoes the most recent delete
   var sel = { key: null, index: -1 }; // keyboard selection on the current page; -1 = none
+  var transcribing = null; // null | "running" | "failed" — shown on Today's transcribe item
 
   function today() {
     var d = new Date();
@@ -55,13 +56,15 @@
     document.getElementById("tasks").innerHTML = out.tasksHtml;
     document.getElementById("waiting").innerHTML = out.waitingHtml;
     document.getElementById("projects").innerHTML = out.projectsHtml;
-    document.getElementById("meetings").innerHTML = out.meetingsHtml;
+    document.getElementById("inbox").innerHTML = out.inboxHtml;
     PAGES.forEach(function (p) {
       document.getElementById("page-" + p).hidden = p !== page;
     });
     var banner = document.getElementById("filter-banner");
     banner.innerHTML = DashboardLogic.filterBannerHtml(query);
     banner.hidden = !query;
+    var run = transcribing && document.querySelector('.att-run[data-action="transcribe"]');
+    if (run) run.textContent = transcribing === "running" ? "Transcribing…" : "Transcription failed — Enter to retry";
     restoreSelection();
   }
 
@@ -277,6 +280,19 @@
   document.addEventListener("click", function (e) {
     if (e.target.closest(".filter-clear")) { setQuery(""); return; }
 
+    var runLink = e.target.closest(".att-run");
+    if (runLink) {
+      e.preventDefault();
+      if (runLink.getAttribute("data-action") === "transcribe" && transcribing !== "running") {
+        transcribing = "running";
+        renderAll();
+        post("/api/transcribe", {})
+          .then(function () { transcribing = null; }, function () { transcribing = "failed"; })
+          .then(refresh);
+      }
+      return;
+    }
+
     var projTrigger = e.target.closest(".proj-open");
     if (projTrigger) {
       e.preventDefault();
@@ -426,21 +442,6 @@
   document.getElementById("theme-toggle").addEventListener("click", function () {
     var current = document.documentElement.getAttribute("data-theme") || "light";
     applyTheme(current === "light" ? "dark" : "light");
-  });
-
-  document.getElementById("transcribe-btn").addEventListener("click", function () {
-    var btn = document.getElementById("transcribe-btn");
-    btn.disabled = true;
-    btn.textContent = "Transcribing…";
-    post("/api/transcribe", {}).then(function () {
-      btn.disabled = false;
-      btn.textContent = "Transcribe pending";
-      refresh();
-    }).catch(function () {
-      btn.disabled = false;
-      btn.textContent = "Transcribe pending";
-      refresh();
-    });
   });
 
   document.getElementById("quick-add-form").addEventListener("submit", function (e) {
