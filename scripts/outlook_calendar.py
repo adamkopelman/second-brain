@@ -88,6 +88,16 @@ def call_list_events(command: list[str], start: _dt.date, end: _dt.date, timeout
     return events if isinstance(events, list) else []
 
 
+def query_window(today: _dt.date, days: int) -> tuple[_dt.date, _dt.date]:
+    """The date range to ask list_events for. outlook-mcp-rs hands dates to Outlook month-first,
+    and on a day-first locale (e.g. en-IL) Outlook reads them the other way round — 2026-09-11 turns
+    into 9 Nov. Dates whose day equals their month (1 Jan, 2 Feb … 12 Dec) read the same either way,
+    so ask for the tightest such range around [today, today + days] and trim the result afterwards."""
+    need_end = today + _dt.timedelta(days=days)
+    candidates = [_dt.date(y, m, m) for y in (today.year - 1, today.year, today.year + 1) for m in range(1, 13)]
+    return (max(c for c in candidates if c <= today), min(c for c in candidates if c >= need_end))
+
+
 def normalize(events: list[dict]) -> list[dict]:
     """Just what the dashboard shows, declined meetings dropped, sorted by day (all-day first)."""
     out = []
@@ -128,10 +138,12 @@ class CalendarCache:
     def refresh(self) -> None:
         if not self._command:
             return
-        start = self._today()
+        today = self._today()
+        first, last = today.isoformat(), (today + _dt.timedelta(days=self._days)).isoformat()
         stamp = _dt.datetime.now().isoformat(timespec="seconds")
         try:
-            events = normalize(self._fetch(self._command, start, start + _dt.timedelta(days=self._days)))
+            events = normalize(self._fetch(self._command, *query_window(today, self._days)))
+            events = [e for e in events if first <= e["date"] < last]
             new = {"status": "ok", "error": None, "events": events, "updated": stamp}
         except OutlookUnavailable as e:
             new = {"status": "unavailable", "error": str(e), "events": [], "updated": stamp}
