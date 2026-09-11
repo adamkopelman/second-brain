@@ -2,6 +2,8 @@
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import datetime as dt
+import wave
 import dashboard_writer as W
 import pytest
 
@@ -194,3 +196,50 @@ def test_run_transcription_reports_no_pending_meetings(tmp_path):
 def test_run_transcription_raises_on_failure(tmp_path):
     with pytest.raises(RuntimeError):
         W.run_transcription(tmp_path)  # no vendored whisper binary present
+
+
+def test_save_meeting_recording_writes_a_wav_and_a_linked_pending_note(tmp_path):
+    started = dt.datetime(2026, 9, 11, 14, 0, 5)
+    out = W.save_meeting_recording(tmp_path, b"\x00\x10" * 16000, started,
+                                   title="סנכרון שבועי: צוות", attendees="Dana; Omer")
+    assert out == {"note": "Meetings/2026-09-11_14-00-05 סנכרון שבועי צוות.md",
+                   "recording": "Meetings/recordings/2026-09-11_14-00-05.wav"}
+    with wave.open(str(tmp_path / out["recording"]), "rb") as w:
+        assert (w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()) == (1, 2, 16000, 16000)
+    note = (tmp_path / out["note"]).read_text(encoding="utf-8")
+    assert "transcription_status: pending" in note
+    assert 'recording: "[[Meetings/recordings/2026-09-11_14-00-05.wav]]"' in note
+    assert "# סנכרון שבועי: צוות" in note
+    assert 'attendees: "Dana; Omer"' in note
+    import transcribe_meetings as T  # the transcription script must find this recording
+    fm, _ = T.parse_frontmatter(note)
+    assert T.resolve_recording(tmp_path, fm) == tmp_path / out["recording"]
+    assert (tmp_path / out["note"]) in T.find_pending(tmp_path)
+
+
+def test_save_meeting_recording_without_a_title_matches_the_obsidian_plugin(tmp_path):
+    out = W.save_meeting_recording(tmp_path, b"\x00\x00" * 10, dt.datetime(2026, 9, 11, 9, 5, 0))
+    assert out["note"] == "Meetings/2026-09-11_09-05-00 Meeting.md"
+    note = (tmp_path / out["note"]).read_text(encoding="utf-8")
+    assert "# Meeting 2026-09-11" in note
+    assert "attendees: \n" in note
+
+
+def test_save_meeting_recording_never_overwrites(tmp_path):
+    started = dt.datetime(2026, 9, 11, 9, 5, 0)
+    a = W.save_meeting_recording(tmp_path, b"\x00\x00" * 10, started, title="Sync")
+    b = W.save_meeting_recording(tmp_path, b"\x00\x00" * 10, started, title="Sync")
+    assert a["note"] != b["note"] and a["recording"] != b["recording"]
+    assert (tmp_path / b["note"]).read_text(encoding="utf-8").count(b["recording"]) == 1
+
+
+def test_save_meeting_recording_rejects_empty_audio(tmp_path):
+    with pytest.raises(ValueError):
+        W.save_meeting_recording(tmp_path, b"", dt.datetime(2026, 9, 11, 9, 0, 0))
+
+
+def test_start_background_transcription_runs_transcription(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(W, "run_transcription", lambda vault: calls.append(vault) or "ok")
+    W.start_background_transcription(tmp_path).join(timeout=5)
+    assert calls == [tmp_path]

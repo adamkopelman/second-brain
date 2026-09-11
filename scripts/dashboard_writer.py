@@ -2,9 +2,12 @@
 """Write-back operations for the local dashboard server. stdlib only."""
 from __future__ import annotations
 import datetime as _dt
+import json as _json
 import re as _re
 import subprocess as _subprocess
 import sys as _sys
+import threading as _threading
+import wave as _wave
 from pathlib import Path
 
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -162,13 +165,96 @@ def create_project(vault: Path, title: str) -> str:
     return str(dest.relative_to(Path(vault).resolve())).replace("\\", "/")
 
 
-def run_transcription(vault: Path) -> str:
-    vault = Path(vault)
-    script = Path(__file__).resolve().parent / "transcribe_meetings.py"
-    result = _subprocess.run(
-        [_sys.executable, str(script), str(vault)],
-        capture_output=True, text=True, timeout=1800,
+RECORDINGS_DIR = "Meetings/recordings"
+SAMPLE_RATE = 16000
+_UNSAFE_NAME_RE = _re.compile(r'[\\/:*?"<>|#^\[\]\x00-\x1f]+')
+_TRANSCRIBE_LOCK = _threading.Lock()
+
+
+def _one_line(s: str | None) -> str:
+    return " ".join((s or "").split())
+
+
+def _safe_title(title: str | None) -> str:
+    """A meeting title usable as (part of) a file name on Windows and in Obsidian links."""
+    t = _one_line(_UNSAFE_NAME_RE.sub(" ", title or "")).strip(".")
+    return t[:80].strip() or "Meeting"
+
+
+def meeting_note_content(date_str: str, recording_rel: str, heading: str, attendees: str = "") -> str:
+    """Same note the record-meeting Obsidian plugin writes (.obsidian/plugins/record-meeting/lib.js
+    meetingNoteContent), plus a real heading/attendees when the recording came from a calendar event."""
+    return (
+        "---\n"
+        "type: meeting\n"
+        f"date: {date_str}\n"
+        f"attendees: {_json.dumps(attendees, ensure_ascii=False) if attendees else ''}\n"
+        f'recording: "[[{recording_rel}]]"\n'
+        "transcription_status: pending\n"
+        "---\n\n"
+        f"# {heading}\n\n"
+        f"**Date:** {date_str}\n"
+        f"**Attendees:** {attendees}\n\n"
+        "## Notes\n\n"
+        "## Decisions\n\n"
+        "## Transcript\n\n"
+        "## Action items\n- [ ]  #next\n"
     )
+
+
+def save_meeting_recording(vault: Path, pcm16: bytes, started: _dt.datetime, title: str | None = None,
+                           attendees: str = "", sample_rate: int = SAMPLE_RATE) -> dict:
+    """Write mono 16-bit PCM as Meetings/recordings/<stamp>.wav plus a linked meeting note with
+    transcription_status: pending — exactly what the transcription script picks up."""
+    if not pcm16:
+        raise ValueError("empty recording")
+    if len(pcm16) % 2:
+        pcm16 = pcm16[:-1]
+    vault = Path(vault)
+    slug = started.strftime("%Y-%m-%d_%H-%M-%S")
+    rec_rel, n = f"{RECORDINGS_DIR}/{slug}.wav", 2
+    while _resolve(vault, rec_rel).exists():
+        rec_rel, n = f"{RECORDINGS_DIR}/{slug}-{n}.wav", n + 1
+    rec_path = _resolve(vault, rec_rel)
+    rec_path.parent.mkdir(parents=True, exist_ok=True)
+    with _wave.open(str(rec_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sample_rate)
+        w.writeframes(pcm16)
+
+    name = _safe_title(title)
+    note_rel, n = f"Meetings/{slug} {name}.md", 2
+    while _resolve(vault, note_rel).exists():
+        note_rel, n = f"Meetings/{slug} {name} {n}.md", n + 1
+    date_str = started.date().isoformat()
+    heading = _one_line(title) or f"Meeting {date_str}"
+    _resolve(vault, note_rel).write_text(
+        meeting_note_content(date_str, rec_rel, heading, _one_line(attendees)), encoding="utf-8")
+    return {"note": note_rel, "recording": rec_rel}
+
+
+def run_transcription(vault: Path) -> str:
+    # one run at a time: two concurrent runs would both pick up the same pending note
+    with _TRANSCRIBE_LOCK:
+        vault = Path(vault)
+        script = Path(__file__).resolve().parent / "transcribe_meetings.py"
+        result = _subprocess.run(
+            [_sys.executable, str(script), str(vault)],
+            capture_output=True, text=True, timeout=1800,
+        )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "transcription failed")
     return result.stdout.strip()
+
+
+def start_background_transcription(vault: Path) -> _threading.Thread:
+    """Transcribe pending recordings without making the caller wait (a meeting can take minutes)."""
+    def work():
+        try:
+            run_transcription(vault)
+        except Exception as e:  # noqa: BLE001 - per-note failures are written into the note itself
+            print(f"background transcription failed: {e}", file=_sys.stderr)
+    t = _threading.Thread(target=work, daemon=True, name="transcribe")
+    t.start()
+    return t
