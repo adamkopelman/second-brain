@@ -50,14 +50,17 @@ def iter_tasks_with_location(vault: Path):
                 if not m:
                     continue
                 body = m.group("b")
+                text, links = _clean_no_links(body), _links_except_self(body, p.stem)
+                if not text and not links:
+                    continue  # unfilled template placeholder, e.g. the Daily Note's "- [ ]  #next"
                 tags = ["#" + t for t in BD.TAG_RE.findall(body)]
                 fields = {k: v.strip() for k, v in BD.FIELD_RE.findall(body)}
                 yield {
                     "file": rel,
                     "line_text": raw_line.rstrip(),
                     "done": m.group("m").lower() == "x",
-                    "text": _clean_no_links(body),
-                    "links": _links_except_self(body, p.stem),
+                    "text": text,
+                    "links": links,
                     "tags": tags,
                     "fields": fields,
                     "project": p.stem if d == "10 Projects" else None,
