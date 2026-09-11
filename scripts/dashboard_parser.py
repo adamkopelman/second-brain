@@ -102,14 +102,43 @@ def _extract_outcome(text: str) -> str | None:
     return outcome or None
 
 
+_DATE_PREFIX_RE = _re.compile(r"^(\d{4}-\d{2}-\d{2})")
+
+
+def _inbox_item(vault: Path, p: Path) -> dict:
+    """One inbox capture: its first line of text (task checkbox, tags and fields stripped), and when
+    it was captured (frontmatter `captured`, else the file name's date prefix)."""
+    text = p.read_text(encoding="utf-8")
+    fm = _parse_frontmatter(text)
+    body = text
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            body = text[end + 4:]
+    first = next((l.strip() for l in body.splitlines() if l.strip()), "")
+    m = BD.TASK_RE.match(first)
+    if m:
+        first = m.group("b")
+    first = BD._clean(_re.sub(r"^#+\s+", "", first))
+    date = _DATE_PREFIX_RE.match(p.stem)
+    return {
+        "file": str(p.relative_to(vault)).replace("\\", "/"),
+        "name": p.stem,
+        "text": first or p.stem,
+        "captured": fm.get("captured") or (date.group(1) if date else None),
+    }
+
+
 def collect_state(vault: Path) -> dict:
     vault = Path(vault)
     today = _dt.date.today()
 
-    inbox_count = 0
+    inbox_items: list[dict] = []
     ib = vault / "00 Inbox"
     if ib.is_dir():
-        inbox_count = len([p for p in ib.glob("*.md") if p.name != "README.md"])
+        inbox_items = [_inbox_item(vault, p) for p in ib.glob("*.md") if p.name != "README.md"]
+        inbox_items.sort(key=lambda i: (i["captured"] or "", i["file"]))
+    inbox_count = len(inbox_items)
 
     active_projects, someday_projects = [], []
     pj = vault / "10 Projects"
@@ -195,6 +224,7 @@ def collect_state(vault: Path) -> dict:
     return {
         "vault_name": vault.resolve().name,
         "inbox_count": inbox_count,
+        "inbox_items": inbox_items,
         "tasks_by_context": tasks_by_context,
         "waiting": waiting,
         "due_soon": due_soon,
