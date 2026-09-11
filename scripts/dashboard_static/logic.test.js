@@ -416,3 +416,39 @@ test("search filters projects and meetings by name", () => {
   assert.match(out.meetingsHtml, /No meetings match your search/);
   assert.equal(out.tabs.projects.count, 1);
 });
+
+const keyEv = (o) => Object.assign({ key: "", code: "", shiftKey: false, ctrlKey: false, metaKey: false, altKey: false }, o);
+
+test("keyAction maps shortcuts by physical key, so a Hebrew layout works too", () => {
+  assert.equal(L.keyAction(keyEv({ key: "j", code: "KeyJ" })), "down");
+  assert.equal(L.keyAction(keyEv({ key: "ח", code: "KeyJ" })), "down");
+  assert.equal(L.keyAction(keyEv({ key: "ל", code: "KeyK" })), "up");
+  assert.equal(L.keyAction(keyEv({ key: "י", code: "KeyH" })), "left");
+  assert.equal(L.keyAction(keyEv({ key: "ך", code: "KeyL" })), "right");
+  assert.equal(L.keyAction(keyEv({ key: "ס", code: "KeyX" })), "complete");
+  assert.equal(L.keyAction(keyEv({ key: "ג", code: "KeyD" })), "delete");
+  assert.equal(L.keyAction(keyEv({ key: "ו", code: "KeyU" })), "undo");
+  assert.equal(L.keyAction(keyEv({ key: "מ", code: "KeyN" })), "new");
+  assert.equal(L.keyAction(keyEv({ key: "ר", code: "KeyR" })), "record");
+  assert.equal(L.keyAction(keyEv({ key: ".", code: "Slash" })), "search"); // the "/" key under Hebrew
+  assert.equal(L.keyAction(keyEv({ key: "?", code: "Slash", shiftKey: true })), "help");
+  assert.equal(L.keyAction(keyEv({ key: "3", code: "Digit3" })), "page:3");
+  assert.equal(L.keyAction(keyEv({ key: "3", code: "Numpad3" })), "page:3");
+  assert.equal(L.keyAction(keyEv({ key: "ArrowDown", code: "ArrowDown" })), "down");
+  assert.equal(L.keyAction(keyEv({ key: "ArrowRight", code: "ArrowRight" })), "right");
+  assert.equal(L.keyAction(keyEv({ key: "Enter", code: "Enter" })), "open");
+});
+
+test("keyAction ignores modified and unmapped keys", () => {
+  assert.equal(L.keyAction(keyEv({ key: "j", code: "KeyJ", ctrlKey: true })), null);
+  assert.equal(L.keyAction(keyEv({ key: "J", code: "KeyJ", shiftKey: true })), null);
+  assert.equal(L.keyAction(keyEv({ key: "q", code: "KeyQ" })), null);
+});
+
+test("task text is marked dir=auto so Hebrew renders right-to-left", () => {
+  const html = L.render({ inbox_count: 0, waiting: [], due_soon: [], active_projects: [], someday_projects: [],
+    tasks_by_context: { "#phone": [{ text: "להתקשר לאינסטלטור", file: "f.md", line_text: "x" }] } }, "", "2026-09-11").tasksHtml;
+  assert.match(html, /<span class="task-text" dir="auto">להתקשר לאינסטלטור/);
+  const detail = L.taskDetailHtml({ text: "שלום", file: "f.md", line_text: "x", context: "#phone" }, "2026-09-11");
+  assert.match(detail, /id="detail-text" value="שלום" dir="auto"/);
+});
