@@ -477,3 +477,41 @@ test("a pending-transcription attention item is an action link", () => {
     someday_projects: [], meetings: [{ name: "A", transcription_status: "pending" }] }, "", "2026-09-11").todayHtml;
   assert.match(html, /<a href="#" class="att-run" data-action="transcribe">1 meeting to transcribe<\/a>/);
 });
+
+const CAL = { status: "ok", error: null, events: [
+  { subject: "Holiday", start: "2026-09-11T00:00", end: "2026-09-12T00:00", date: "2026-09-11", all_day: true, location: "", attendees: "" },
+  { subject: "סנכרון שבועי", start: "2026-09-11T09:30", end: "2026-09-11T10:00", date: "2026-09-11", all_day: false, location: "Room 1", attendees: "Dana; Omer" },
+  { subject: "Planning", start: "2026-09-11T14:00", end: "2026-09-11T15:00", date: "2026-09-11", all_day: false, location: "", attendees: "" },
+  { subject: "Tomorrow thing", start: "2026-09-12T09:00", end: "2026-09-12T09:30", date: "2026-09-12", all_day: false, location: "", attendees: "" },
+] };
+const BASE = { inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [], active_projects: [], someday_projects: [] };
+
+test("the Today page lists today's meetings first, with times, dimming ones that are over", () => {
+  const html = L.render({ ...BASE, calendar: CAL }, "", "2026-09-11", {}, "2026-09-11T12:00").todayHtml;
+  assert.ok(html.indexOf("Meetings today") < html.indexOf("Nothing due this week"));
+  assert.match(html, /<span class="ev-time">all day<\/span><span class="ev-subject" dir="auto">Holiday/);
+  assert.match(html, /class="event nav-item event-past"[^>]*data-subject="סנכרון שבועי" data-attendees="Dana; Omer"/);
+  assert.match(html, /<span class="ev-time">09:30–10:00<\/span>/);
+  assert.match(html, /<span class="ev-loc" dir="auto">Room 1<\/span>/);
+  assert.match(html, /class="event nav-item"[^>]*data-subject="Planning"/);
+  assert.doesNotMatch(html, /Tomorrow thing/);
+});
+
+test("the Today page says when the Outlook calendar is loading or unavailable, and nothing when off", () => {
+  const load = L.render({ ...BASE, calendar: { status: "loading", events: [] } }, "", "2026-09-11").todayHtml;
+  assert.match(load, /Loading your Outlook calendar/);
+  const down = L.render({ ...BASE, calendar: { status: "unavailable", error: "Outlook is not running", events: [] } }, "", "2026-09-11").todayHtml;
+  assert.match(down, /Outlook calendar unavailable — Outlook is not running/);
+  const off = L.render({ ...BASE, calendar: { status: "off", events: [] } }, "", "2026-09-11").todayHtml;
+  assert.doesNotMatch(off, /Outlook/);
+});
+
+test("search filters today's meetings by subject", () => {
+  const html = L.render({ ...BASE, calendar: CAL }, "plan", "2026-09-11").todayHtml;
+  assert.match(html, /Planning/);
+  assert.doesNotMatch(html, /Holiday/);
+});
+
+test("localDateTime formats local time without a timezone", () => {
+  assert.equal(L.localDateTime(new Date(2026, 8, 11, 9, 5, 7)), "2026-09-11T09:05:07");
+});

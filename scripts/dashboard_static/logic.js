@@ -36,6 +36,14 @@
     return isoDate(d);
   }
 
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function localDateTime(d) {
+    return isoDate(d) + "T" + pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+  }
+
   function plural(n, word) {
     return n + " " + word + (n === 1 ? "" : "s");
   }
@@ -249,6 +257,45 @@
       section("Someday / Maybe", renderProjects(filterByName(state.someday_projects || [], query)));
   }
 
+  function eventsOn(calendar, date) {
+    return ((calendar && calendar.events) || []).filter(function (ev) { return ev.date === date; });
+  }
+
+  function filterEvents(events, query) {
+    if (!query) return events;
+    var q = query.toLowerCase();
+    return events.filter(function (ev) {
+      return (ev.subject || "").toLowerCase().indexOf(q) !== -1 || (ev.location || "").toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function eventTime(ev) {
+    if (ev.all_day) return "all day";
+    var sameDay = ev.end && ev.end.slice(0, 10) === ev.date;
+    return ev.start.slice(11, 16) + (sameDay ? "–" + ev.end.slice(11, 16) : "");
+  }
+
+  // A meeting row. Enter on it records that meeting, hence the subject/attendees data.
+  function eventLine(ev, now) {
+    var past = now && !ev.all_day && ev.end && ev.end.slice(0, 16) <= now;
+    return '<li class="event nav-item' + (past ? " event-past" : "") + '" data-key="' +
+      escapeHtml("ev|" + ev.start + "|" + ev.subject) + '" data-subject="' + escapeHtml(ev.subject) +
+      '" data-attendees="' + escapeHtml(ev.attendees || "") + '">' +
+      '<span class="ev-time">' + escapeHtml(eventTime(ev)) + "</span>" +
+      '<span class="ev-subject" dir="auto">' + escapeHtml(ev.subject) + "</span>" +
+      (ev.location ? '<span class="ev-loc" dir="auto">' + escapeHtml(ev.location) + "</span>" : "") + "</li>";
+  }
+
+  function calendarNote(calendar) {
+    var status = calendar && calendar.status;
+    if (status === "loading") return '<p class="cal-note">Loading your Outlook calendar…</p>';
+    if (status === "unavailable") {
+      return '<p class="cal-note">Outlook calendar unavailable' +
+        (calendar.error ? " — " + escapeHtml(calendar.error) : "") + "</p>";
+    }
+    return "";
+  }
+
   function renderAttention(items) {
     return '<ul class="att-list">' + items.map(function (a) {
       var text = escapeHtml(a.text);
@@ -264,7 +311,7 @@
     }).join("") + "</ul>";
   }
 
-  function renderToday(state, query, today, pending) {
+  function renderToday(state, query, today, pending, now) {
     var b = bucketDue(filterTasks(state.due_soon || [], query), today);
     var att = attentionItems(state, today);
     var alerts = att.filter(function (a) { return a.alert; });
@@ -272,13 +319,17 @@
     function list(items) {
       return '<ul class="task-list">' + items.map(function (t) { return taskLine(t, today, pending); }).join("") + "</ul>";
     }
-    var html = "";
-    if (b.overdue.length) html += section("Overdue", list(b.overdue), "section-alert");
-    if (b.today.length) html += section("Due today", list(b.today));
-    if (b.week.length) html += section("This week", list(b.week));
-    if (!html) {
-      html = '<p class="empty today-clear">' + (query ? "No due tasks match your search." : "Nothing due this week.") + "</p>";
+    var meetings = filterEvents(eventsOn(state.calendar, today), query);
+    var html = calendarNote(state.calendar);
+    if (meetings.length) {
+      html += section("Meetings today", '<ul class="event-list">' +
+        meetings.map(function (ev) { return eventLine(ev, now); }).join("") + "</ul>");
     }
+    var due = "";
+    if (b.overdue.length) due += section("Overdue", list(b.overdue), "section-alert");
+    if (b.today.length) due += section("Due today", list(b.today));
+    if (b.week.length) due += section("This week", list(b.week));
+    html += due || '<p class="empty today-clear">' + (query ? "No due tasks match your search." : "Nothing due this week.") + "</p>";
     if (alerts.length) html += section("Needs attention", renderAttention(alerts));
     if (reminders.length) html += section("On your lists", renderAttention(reminders));
     return html;
@@ -458,10 +509,10 @@
   }
 
   // One HTML string per page plus the tab-bar data; the search query filters every page.
-  function render(state, query, today, pending) {
+  function render(state, query, today, pending, now) {
     return {
       tabs: tabInfo(state, query, today),
-      todayHtml: renderToday(state, query, today, pending),
+      todayHtml: renderToday(state, query, today, pending, now),
       tasksHtml: renderTasksPage(state, query, today, pending),
       inboxHtml: renderInbox(state.inbox_items || [], query, state.vault_name),
       waitingHtml: renderSimpleList(state.waiting || [], today, query, pending, "Not waiting on anything."),
@@ -474,7 +525,7 @@
     escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
     taskKey: taskKey, obsidianUrl: obsidianUrl, dueLabel: dueLabel, bucketDue: bucketDue,
     attentionItems: attentionItems, tabInfo: tabInfo, renderTabs: renderTabs, shortcutsHtml: shortcutsHtml,
-    keyAction: keyAction, filterBannerHtml: filterBannerHtml, pickHorizontal: pickHorizontal,
+    keyAction: keyAction, localDateTime: localDateTime, filterBannerHtml: filterBannerHtml, pickHorizontal: pickHorizontal,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
     renderNeedsTriage: renderNeedsTriage,
   };
