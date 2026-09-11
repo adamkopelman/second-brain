@@ -32,9 +32,14 @@ Two buttons, both added by the vendored `record-meeting` Obsidian plugin
   /gtd-summarize-meetings in Claude Code._` placeholder until the summarization step runs.
 
 Both are also in the command palette (`Ctrl+P` → "Record Meeting: ...") if you'd rather use a hotkey.
-The local dashboard server's Meetings card has the same "Transcribe pending" action as a button, and
-the dashboard's "Needs triage" card surfaces any action item whose context came back `#unknown` so you
-can resolve it with a couple of clicks.
+
+**Or record from the local dashboard** (`docs/gtd/local-dashboard.md`): press `r` or click
+**● Record** — or press `Enter` on one of today's Outlook meetings to record it under that meeting's
+name, with its attendees. It writes the same WAV + note as the mic icon and transcribes it
+automatically in the background, so there's nothing else to click. For recordings made with the
+Obsidian mic icon, the dashboard's Today page shows "N meetings to transcribe" (press `Enter` on it
+to run the same transcription), and the Tasks page's "Needs triage" section surfaces any action item
+whose context came back `#unknown` so you can resolve it with a couple of keystrokes.
 
 ## Summarizing (Claude Code)
 
