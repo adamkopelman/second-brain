@@ -112,6 +112,16 @@
     return true;
   }
 
+  function moveHorizontal(dir) {
+    var items = navItems();
+    if (!items.length) return false;
+    if (sel.index < 0) { select(0, true); return true; }
+    var rects = items.map(function (el) { return el.getBoundingClientRect(); });
+    var i = DashboardLogic.pickHorizontal(rects, sel.index, dir);
+    if (i >= 0) select(i, true);
+    return true;
+  }
+
   function activate(el) {
     if (el.classList.contains("task-pending")) {
       undoDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
@@ -382,6 +392,8 @@
     switch (action) {
       case "down": return move(1);
       case "up": return move(-1);
+      case "left": return moveHorizontal(-1);
+      case "right": return moveHorizontal(1);
       case "open":
         if (!el) return false;
         activate(el);
