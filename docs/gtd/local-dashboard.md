@@ -25,8 +25,10 @@ it, and there's no login because there's nothing to log into.
   week, then "Needs attention" (inbox to process, tasks needing triage, project reviews, meetings to
   transcribe or summarize) and "On your lists" reminders (waiting-for, other next actions). Empty
   groups are hidden.
-- **Week**: a column per day (today + the next 6) with that day's meetings and tasks due, plus an
-  "Overdue" column first when anything is overdue.
+- **Week**: the 7 days (today + the next 6) side by side, each with its meetings and tasks due.
+  Overdue tasks stay on Today; the Week page links to them in one line.
+- More than 3 overdue project reviews show as one "N project reviews overdue" line (Enter jumps to
+  Projects) instead of one line per project.
 - **Tasks** (by context, with needs-triage on top), **Inbox** (every capture in `00 Inbox/`; `Enter`
   opens one in Obsidian — clarify them with `/gtd-process-inbox`), **Waiting**, **Projects** (active +
   someday/maybe).
@@ -40,7 +42,7 @@ it, and there's no login because there's nothing to log into.
   filter is active a banner says so; `Esc` (in the box or on the page) clears it.
 - **Outlook calendar**: the server reads the next 7 days of your calendar through the vendored
   `outlook-mcp-rs` MCP server (`$OUTLOOK_MCP_BIN`, else `vendor/outlook-mcp-rs/outlook-mcp-rs.exe`),
-  refreshing every 5 minutes in the background. Read-only — it only ever calls `list_events` — and
+  refreshing every minute in the background. Read-only — it only ever calls `list_events` — and
   meetings you declined are left out. Needs classic Outlook running (see `docs/gtd/outlook.md`); if it
   isn't reachable, Today says so in one line and everything else works as usual.
 - **Record a meeting**: `r` or the **● Record** button starts recording your microphone (the browser

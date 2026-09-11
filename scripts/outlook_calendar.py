@@ -122,7 +122,7 @@ class CalendarCache:
     """Keeps the next `days` days of events fresh from a background thread, so /api/state never
     waits on Outlook; snapshot() is always instant."""
 
-    def __init__(self, command, ttl=300, days=7, fetch=call_list_events, today=_dt.date.today):
+    def __init__(self, command, ttl=60, days=7, fetch=call_list_events, today=_dt.date.today):
         self._command, self._ttl, self._days, self._fetch, self._today = command, ttl, days, fetch, today
         self._lock = threading.Lock()
         if command:
