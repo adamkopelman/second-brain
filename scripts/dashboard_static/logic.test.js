@@ -258,6 +258,13 @@ test("search also filters Waiting and Due soon, matching linked names", () => {
   assert.doesNotMatch(out.dueSoonHtml, /Pay invoice/);
 });
 
+test("renderMeetings shows no transcription pill for a hand-written note with no recording", () => {
+  const html = L.renderMeetings([{ name: "2026-09-08 Kickoff", file: "Meetings/2026-09-08 Kickoff.md",
+    date: "2026-09-08", transcription_status: null, summary_status: null }], "v");
+  assert.match(html, /2026-09-08 Kickoff/);
+  assert.doesNotMatch(html, /class="pill/);
+});
+
 test("renderMeetings shows an empty state with no meetings", () => {
   assert.equal(L.renderMeetings([]), '<p class="empty">No meetings yet.</p>');
 });
