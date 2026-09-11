@@ -169,3 +169,26 @@ def test_collect_state_lists_recent_meetings_newest_first_capped(tmp_path):
     assert state["meetings"][0]["date"] == "2026-09-10"
     assert state["meetings"][0]["transcription_status"] == "done"
     assert state["meetings"][0]["summary_status"] == "pending"
+
+
+def test_collect_state_lists_inbox_items_with_text_and_capture_date(tmp_path):
+    _mk_vault(tmp_path)
+    ib = tmp_path / "00 Inbox"
+    (ib / "2026-09-10 call-plumber.md").write_text(
+        "---\ntype: inbox\ncaptured: 2026-09-10\n---\n- [ ] Call plumber about the leaky faucet\n", encoding="utf-8")
+    (ib / "2026-09-11 idea.md").write_text(
+        "---\ntype: inbox\n---\n\nCheck out [[Atomic Habits]] — recommended by Sam\nsecond line\n", encoding="utf-8")
+    (ib / "2026-09-11 hebrew.md").write_text(
+        "---\ntype: inbox\ncaptured: 2026-09-11\n---\n- [ ] להתקשר לאינסטלטור #next #phone\n", encoding="utf-8")
+    (ib / "2026-09-12 empty.md").write_text("---\ntype: inbox\ncaptured: 2026-09-12\n---\n", encoding="utf-8")
+    state = P.collect_state(tmp_path)
+    items = state["inbox_items"]
+    by_file = {i["file"]: i for i in items}
+    assert by_file["00 Inbox/2026-09-10 call-plumber.md"]["text"] == "Call plumber about the leaky faucet"
+    assert by_file["00 Inbox/2026-09-11 idea.md"]["text"] == "Check out Atomic Habits — recommended by Sam"
+    assert by_file["00 Inbox/2026-09-11 idea.md"]["captured"] == "2026-09-11"  # from the file name
+    assert by_file["00 Inbox/2026-09-11 hebrew.md"]["text"] == "להתקשר לאינסטלטור"
+    assert by_file["00 Inbox/2026-09-12 empty.md"]["text"] == "2026-09-12 empty"  # falls back to the name
+    assert [i["file"] for i in items][0] == "00 Inbox/loose.md"  # captured 2026-09-09 sorts first
+    assert "00 Inbox/README.md" not in by_file
+    assert state["inbox_count"] == len(items) == 5
