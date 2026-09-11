@@ -165,7 +165,7 @@
     }).join("");
     return '<li class="task nav-item" data-key="' + key + '" ' + loc + ">" +
       '<input type="checkbox" class="task-check">' +
-      '<span class="task-text">' + escapeHtml(t.text) + links + "</span>" +
+      '<span class="task-text" dir="auto">' + escapeHtml(t.text) + links + "</span>" +
       proj + due +
       '<button class="task-delete" title="Delete">×</button>' +
       "</li>";
@@ -310,6 +310,26 @@
     }).join("") + "</table>";
   }
 
+  // Shortcuts are matched on the physical key (e.code), not the typed character, so they keep
+  // working when the keyboard is switched to Hebrew (where "j" types "ח").
+  var CODE_ACTIONS = {
+    KeyJ: "down", KeyK: "up", KeyH: "left", KeyL: "right",
+    KeyX: "complete", KeyD: "delete", KeyU: "undo", KeyN: "new", KeyR: "record",
+  };
+  var KEY_ACTIONS = { ArrowDown: "down", ArrowUp: "up", ArrowLeft: "left", ArrowRight: "right", Enter: "open" };
+
+  function keyAction(ev) {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return null;
+    var code = ev.code || "";
+    if (code === "Slash") return ev.shiftKey ? "help" : "search";
+    if (ev.key === "?") return "help";
+    var digit = /^(?:Digit|Numpad)([1-9])$/.exec(code);
+    if (digit && !ev.shiftKey) return "page:" + digit[1];
+    if (KEY_ACTIONS[ev.key]) return KEY_ACTIONS[ev.key];
+    if (!ev.shiftKey && CODE_ACTIONS[code]) return CODE_ACTIONS[code];
+    return null;
+  }
+
   // Every open task (any context, plus waiting-for) belonging to one project,
   // deduplicated by (file, line) — used by the project detail overlay.
   function tasksForProject(state, projectName) {
@@ -346,7 +366,7 @@
       }).join("");
     return (
       '<div class="detail-row"><label for="detail-text">Text</label>' +
-      '<input type="text" id="detail-text" value="' + escapeHtml(t.text) + '"></div>' +
+      '<input type="text" id="detail-text" value="' + escapeHtml(t.text) + '" dir="auto"></div>' +
       '<div class="detail-row"><label for="detail-due">Due date</label>' +
       '<input type="date" id="detail-due" value="' + escapeHtml(t.due || "") + '">' +
       (overdue ? ' <span class="pill overdue">overdue</span>' : "") + "</div>" +
@@ -425,6 +445,7 @@
     escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
     taskKey: taskKey, obsidianUrl: obsidianUrl, dueLabel: dueLabel, bucketDue: bucketDue,
     attentionItems: attentionItems, tabInfo: tabInfo, renderTabs: renderTabs, shortcutsHtml: shortcutsHtml,
+    keyAction: keyAction,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
     renderNeedsTriage: renderNeedsTriage, renderMeetings: renderMeetings,
   };

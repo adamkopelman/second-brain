@@ -312,21 +312,23 @@
 
   // ---- keyboard ----
 
+  var searchEl = document.getElementById("search");
+
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       closeQuickAdd();
       closeDetailModal();
-      if (document.activeElement && document.activeElement.id === "search") document.activeElement.blur();
+      if (document.activeElement === searchEl) searchEl.blur();
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     var tag = (e.target.tagName || "").toLowerCase();
 
     // Enter in the search box drops you onto the first result, ready for j/k
-    if (e.target.id === "search") {
+    if (e.target === searchEl) {
       if (e.key === "Enter" || e.key === "ArrowDown") {
         e.preventDefault();
-        e.target.blur();
+        searchEl.blur();
         select(0, true);
       }
       return;
@@ -342,33 +344,40 @@
     // a focused button/link handles its own Enter/Space
     if ((e.key === "Enter" || e.key === " ") && (tag === "button" || tag === "a")) return;
 
-    var el = selectedEl();
-    var num = parseInt(e.key, 10);
-    if (num >= 1 && num <= PAGES.length) {
-      goTo(PAGES[num - 1]);
-    } else if (e.key === "j" || e.key === "ArrowDown") {
-      if (move(1)) e.preventDefault();
-    } else if (e.key === "k" || e.key === "ArrowUp") {
-      if (move(-1)) e.preventDefault();
-    } else if (e.key === "Enter") {
-      if (el) { e.preventDefault(); activate(el); }
-    } else if (e.key === "x") {
-      if (el && el.classList.contains("task")) completeTask(el.getAttribute("data-file"), el.getAttribute("data-line"));
-    } else if (e.key === "d") {
-      if (el && el.classList.contains("task")) scheduleDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
-    } else if (e.key === "u") {
-      undoLastDelete();
-    } else if (e.key === "/") {
-      e.preventDefault();
-      document.getElementById("search").focus();
-    } else if (e.key === "n") {
-      e.preventDefault();
-      openQuickAdd();
-    } else if (e.key === "?") {
-      e.preventDefault();
-      openHelp();
-    }
+    var action = DashboardLogic.keyAction(e);
+    if (action && runAction(action)) e.preventDefault();
   });
+
+  // Returns true when the key was used, so the browser's default (scrolling, typing) is skipped.
+  function runAction(action) {
+    var el = selectedEl();
+    var isTask = el && el.classList.contains("task");
+    if (action.indexOf("page:") === 0) {
+      var n = parseInt(action.slice(5), 10);
+      if (n > PAGES.length) return false;
+      goTo(PAGES[n - 1]);
+      return true;
+    }
+    switch (action) {
+      case "down": return move(1);
+      case "up": return move(-1);
+      case "open":
+        if (!el) return false;
+        activate(el);
+        return true;
+      case "complete":
+        if (isTask) completeTask(el.getAttribute("data-file"), el.getAttribute("data-line"));
+        return true;
+      case "delete":
+        if (isTask) scheduleDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
+        return true;
+      case "undo": undoLastDelete(); return true;
+      case "search": searchEl.focus(); return true;
+      case "new": openQuickAdd(); return true;
+      case "help": openHelp(); return true;
+    }
+    return false;
+  }
 
   // tab clicks, attention links and Back/Forward arrive here
   window.addEventListener("hashchange", function () {
@@ -376,8 +385,8 @@
     if (p !== page) showPage(p);
   });
 
-  document.getElementById("search").addEventListener("input", function (e) {
-    query = e.target.value;
+  searchEl.addEventListener("input", function () {
+    query = searchEl.value;
     renderAll();
   });
 
