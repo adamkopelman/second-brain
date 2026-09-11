@@ -461,3 +461,22 @@ test("filterBannerHtml explains an active filter and how to clear it, escaping t
   assert.match(html, /class="filter-clear"/);
   assert.match(html, /<kbd>Esc<\/kbd>/);
 });
+
+test("pickHorizontal moves to the level row in the nearest column, or stays put at the edge", () => {
+  const r = (left, top) => ({ left, right: left + 100, top, bottom: top + 20 });
+  // three columns (x = 0, 120, 240); column 2 has rows at y = 0 and 40, column 3 only at y = 0;
+  // a second grid row of columns starts at y = 200
+  const rects = [r(0, 0), r(0, 40), r(0, 80), r(120, 0), r(120, 40), r(240, 0), r(0, 200), r(120, 200)];
+  assert.equal(L.pickHorizontal(rects, 1, 1), 4);   // col 1 row 2 → col 2 row 2
+  assert.equal(L.pickHorizontal(rects, 2, 1), 4);   // col 1 row 3 → col 2's nearest row
+  assert.equal(L.pickHorizontal(rects, 4, 1), 5);   // → col 3 (only row)
+  assert.equal(L.pickHorizontal(rects, 5, 1), -1);  // right edge
+  assert.equal(L.pickHorizontal(rects, 3, -1), 0);  // back left
+  assert.equal(L.pickHorizontal(rects, 6, 1), 7);   // second grid row stays in its row
+  assert.equal(L.pickHorizontal(rects, 0, -1), -1); // left edge
+  // an indented full-width section above the columns (Needs triage) is not a column of its own
+  const withTriage = [{ left: 13, right: 600, top: -40, bottom: -20 }, r(0, 0), r(320, 0)];
+  assert.equal(L.pickHorizontal(withTriage, 1, 1), 2);
+  assert.equal(L.pickHorizontal(withTriage, 2, -1), 1);
+  assert.equal(L.pickHorizontal(withTriage, 0, 1), 2);
+});

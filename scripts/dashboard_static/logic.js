@@ -299,6 +299,7 @@
 
   var SHORTCUTS = [
     ["1 – 5", "Switch page"], ["j / ↓", "Next item"], ["k / ↑", "Previous item"],
+    ["h / ←", "Column to the left"], ["l / →", "Column to the right"],
     ["Enter", "Open the selected item"], ["x", "Complete the selected task"],
     ["d", "Delete the selected task (5 s to undo)"], ["u", "Undo the last delete"],
     ["/", "Search"], ["n", "New task"], ["Esc", "Close / leave search"], ["?", "Show this list"],
@@ -308,6 +309,29 @@
     return '<table class="shortcuts">' + SHORTCUTS.map(function (s) {
       return "<tr><td><kbd>" + escapeHtml(s[0]) + "</kbd></td><td>" + escapeHtml(s[1]) + "</td></tr>";
     }).join("") + "</table>";
+  }
+
+  // For ←/→: the nearest column over (by left edge), then the row in it closest in height to the
+  // current one. Works for any grid of rows, including ones that wrap onto a second line. Left edges
+  // within COL_SLACK px count as one column (an indented section, like Needs triage, isn't its own).
+  var COL_SLACK = 40;
+
+  function pickHorizontal(rects, from, dir) {
+    var cur = rects[from];
+    var cy = (cur.top + cur.bottom) / 2;
+    var colLeft = null;
+    rects.forEach(function (r) {
+      var ahead = dir > 0 ? r.left > cur.left + COL_SLACK : r.left < cur.left - COL_SLACK;
+      if (ahead && (colLeft === null || Math.abs(r.left - cur.left) < Math.abs(colLeft - cur.left))) colLeft = r.left;
+    });
+    if (colLeft === null) return -1;
+    var best = -1, bestDy = Infinity;
+    rects.forEach(function (r, i) {
+      if (Math.abs(r.left - colLeft) > COL_SLACK) return;
+      var dy = Math.abs((r.top + r.bottom) / 2 - cy);
+      if (dy < bestDy) { bestDy = dy; best = i; }
+    });
+    return best;
   }
 
   function filterBannerHtml(query) {
@@ -451,7 +475,7 @@
     escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
     taskKey: taskKey, obsidianUrl: obsidianUrl, dueLabel: dueLabel, bucketDue: bucketDue,
     attentionItems: attentionItems, tabInfo: tabInfo, renderTabs: renderTabs, shortcutsHtml: shortcutsHtml,
-    keyAction: keyAction, filterBannerHtml: filterBannerHtml,
+    keyAction: keyAction, filterBannerHtml: filterBannerHtml, pickHorizontal: pickHorizontal,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
     renderNeedsTriage: renderNeedsTriage, renderMeetings: renderMeetings,
   };
