@@ -17,8 +17,17 @@ it, and there's no login because there's nothing to log into.
 
 ## What it does
 
-- Shows inbox size, tasks (grouped by context), due-soon, waiting-for, active projects, and
-  someday/maybe on one no-scroll screen.
+- Opens on a **Today** page: what's overdue, due today, and due this week, then a short "Needs
+  attention" list (inbox to process, tasks needing triage, project reviews, meetings to transcribe or
+  summarize) and "On your lists" reminders (waiting-for, other next actions). Empty groups are hidden.
+- The rest lives on four more pages — **Tasks** (by context, with needs-triage on top), **Waiting**,
+  **Projects** (active + someday/maybe) and **Meetings**. Each tab shows its count and a red dot when
+  something on it needs attention. The page is kept in the URL (`#today`, `#tasks`, …).
+- Fully keyboard-driven: `1`–`5` switch pages, `j`/`k` (or `↓`/`↑`) move through rows, `Enter` opens
+  the selected row (or follows a Today-page link), `x` completes, `d` deletes, `u` undoes the last
+  delete, `/` searches (press `Enter` to jump into the results), `n` adds a task, `Esc` closes, and
+  `?` shows the full list. Inside a task's detail view, `Enter` saves.
+- Search filters the page you're on; the tab counts show how many matches each page has.
 - Checking a task's box, editing its text or due date, or deleting it writes straight to the real
   `.md` file — Obsidian and the browser page never disagree, because there's only ever one copy of
   the data. Deleting shows an **Undo** for 5 seconds; the line is only removed from the file once
@@ -29,9 +38,12 @@ it, and there's no login because there's nothing to log into.
   inserts under that project's `## Next actions` heading if you do — matching `/gtd-capture`'s and
   QuickAdd's conventions.
 - Auto-refreshes every ~4 seconds, so edits made directly in Obsidian show up here too.
-- Shows recent meetings (transcription/summary status at a glance) with a "Transcribe pending" button,
-  and a "Needs triage" card for any task whose context came back `#unknown` from meeting summarization
-  — resolve one by opening its detail overlay and picking a real context from the dropdown.
+- The Meetings page lists recent meetings (transcription/summary status at a glance) with a
+  "Transcribe pending" button. Any task whose context came back `#unknown` from meeting summarization
+  shows under "Needs triage" at the top of the Tasks page — resolve one by opening its detail overlay
+  and picking a real context from the dropdown.
+- The delete (×) button on a row only appears when you hover or select that row; it's also in every
+  task's detail view.
 
 ## Safety model
 

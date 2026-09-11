@@ -2,15 +2,39 @@
 (function () {
   var POLL_MS = 4000;
   var UNDO_MS = 5000;
+  var PAGES = DashboardLogic.PAGES;
   var state = null;
   var query = "";
+  var page = pageFromHash();
   var pendingDeletes = {}; // taskKey -> timeout id; the file is only touched once the undo window closes
+  var deleteOrder = [];    // [{file, line}] oldest first, so `u` undoes the most recent delete
+  var sel = { key: null, index: -1 }; // keyboard selection on the current page; -1 = none
 
   function today() {
     var d = new Date();
     var mm = String(d.getMonth() + 1).padStart(2, "0");
     var dd = String(d.getDate()).padStart(2, "0");
     return d.getFullYear() + "-" + mm + "-" + dd;
+  }
+
+  function pageFromHash() {
+    var h = location.hash.replace(/^#/, "");
+    return PAGES.indexOf(h) >= 0 ? h : "today";
+  }
+
+  function showPage(p) {
+    page = p;
+    sel = { key: null, index: -1 };
+    renderAll();
+    window.scrollTo(0, 0);
+  }
+
+  // Switch synchronously (hashchange fires later, which would drop a j/k typed right after the
+  // number key); the hash still updates so reload and Back keep you on the page.
+  function goTo(p) {
+    if (p === page) return;
+    showPage(p);
+    location.hash = p;
   }
 
   function applyTheme(theme) {
@@ -21,18 +45,67 @@
   function renderAll() {
     if (!state) return;
     var out = DashboardLogic.render(state, query, today(), pendingDeletes);
-    document.getElementById("kpis").innerHTML =
-      ["inbox", "tasks", "waiting", "due"].map(function (k) {
-        return '<div class="kpi"><b>' + out.kpis[k] + "</b><div>" + k + "</div></div>";
-      }).join("");
+    document.getElementById("tabs").innerHTML = DashboardLogic.renderTabs(out.tabs, page);
+    document.getElementById("today").innerHTML = out.todayHtml;
     document.getElementById("tasks").innerHTML = out.tasksHtml;
-    document.getElementById("due-soon").innerHTML = out.dueSoonHtml;
     document.getElementById("waiting").innerHTML = out.waitingHtml;
     document.getElementById("projects").innerHTML = out.projectsHtml;
-    document.getElementById("someday").innerHTML = out.somedayHtml;
-    document.getElementById("needs-triage").innerHTML = out.needsTriageHtml;
     document.getElementById("meetings").innerHTML = out.meetingsHtml;
+    PAGES.forEach(function (p) {
+      document.getElementById("page-" + p).hidden = p !== page;
+    });
+    restoreSelection();
   }
+
+  // ---- keyboard selection ----
+
+  function navItems() {
+    return Array.prototype.slice.call(document.querySelectorAll("#page-" + page + " .nav-item"));
+  }
+
+  function select(i, scroll) {
+    var items = navItems();
+    items.forEach(function (el) { el.classList.remove("selected"); });
+    if (!items.length || i < 0) { sel = { key: null, index: -1 }; return; }
+    i = Math.min(i, items.length - 1);
+    var el = items[i];
+    el.classList.add("selected");
+    sel = { key: el.getAttribute("data-key"), index: i };
+    if (scroll) el.scrollIntoView({ block: "nearest" });
+  }
+
+  // After a re-render, keep the same row selected; if it's gone (completed, deleted elsewhere),
+  // land on whatever now sits at its old position.
+  function restoreSelection() {
+    if (sel.index < 0) return;
+    var keys = navItems().map(function (el) { return el.getAttribute("data-key"); });
+    var i = keys.indexOf(sel.key);
+    select(i >= 0 ? i : sel.index, false);
+  }
+
+  function selectedEl() {
+    return sel.index < 0 ? null : navItems()[sel.index] || null;
+  }
+
+  function move(delta) {
+    var items = navItems();
+    if (!items.length) return false;
+    select(sel.index < 0 ? (delta > 0 ? 0 : items.length - 1) : Math.max(0, sel.index + delta), true);
+    return true;
+  }
+
+  function activate(el) {
+    if (el.classList.contains("task-pending")) {
+      undoDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
+    } else if (el.classList.contains("task")) {
+      openTaskDetail(el.getAttribute("data-file"), el.getAttribute("data-line"));
+    } else {
+      var target = el.querySelector(".proj-open, a[href]");
+      if (target) target.click();
+    }
+  }
+
+  // ---- data ----
 
   function refresh() {
     fetch("/api/state").then(function (r) { return r.json(); }).then(function (data) {
@@ -52,13 +125,23 @@
     });
   }
 
+  function completeTask(file, line) {
+    post("/api/complete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
+  }
+
+  function forgetDelete(key) {
+    delete pendingDeletes[key];
+    deleteOrder = deleteOrder.filter(function (d) { return DashboardLogic.taskKey(d.file, d.line) !== key; });
+  }
+
   function scheduleDelete(file, line) {
     var key = DashboardLogic.taskKey(file, line);
     if (pendingDeletes[key]) return;
+    deleteOrder.push({ file: file, line: line });
     pendingDeletes[key] = setTimeout(function () {
       post("/api/delete-task", { file: file, line_text: line })
-        .then(function () { delete pendingDeletes[key]; refresh(); })
-        .catch(function () { delete pendingDeletes[key]; refresh(); });
+        .then(function () { forgetDelete(key); refresh(); })
+        .catch(function () { forgetDelete(key); refresh(); });
     }, UNDO_MS);
     renderAll();
   }
@@ -66,8 +149,13 @@
   function undoDelete(file, line) {
     var key = DashboardLogic.taskKey(file, line);
     clearTimeout(pendingDeletes[key]);
-    delete pendingDeletes[key];
+    forgetDelete(key);
     renderAll();
+  }
+
+  function undoLastDelete() {
+    var last = deleteOrder[deleteOrder.length - 1];
+    if (last) undoDelete(last.file, last.line);
   }
 
   function findTaskInState(file, line) {
@@ -87,18 +175,35 @@
     return null;
   }
 
+  // ---- modals ----
+
   var detailModal = document.getElementById("detail-modal");
   var detailTitle = document.getElementById("detail-title");
   var detailBody = document.getElementById("detail-body");
+  var modal = document.getElementById("quick-add");
+
+  function anyModalOpen() {
+    return !detailModal.classList.contains("hidden") || !modal.classList.contains("hidden");
+  }
 
   function openDetailModal(title, bodyHtml) {
     detailTitle.textContent = title;
     detailBody.innerHTML = bodyHtml;
     detailModal.classList.remove("hidden");
+    // put keyboard focus inside the overlay: the task's text field, or the close button
+    // (never a task checkbox in a project's list, where Space would complete it)
+    var first = detailBody.querySelector("#detail-text") || document.getElementById("detail-modal-close");
+    first.focus();
+  }
+
+  // hand focus back to the page so j/k work straight away after closing
+  function hideModal(m) {
+    m.classList.add("hidden");
+    if (m.contains(document.activeElement)) document.activeElement.blur();
   }
 
   function closeDetailModal() {
-    detailModal.classList.add("hidden");
+    hideModal(detailModal);
   }
 
   function openTaskDetail(file, line) {
@@ -115,10 +220,31 @@
     openDetailModal("Project", DashboardLogic.projectDetailHtml(p, related, today(), state.vault_name));
   }
 
+  function openHelp() {
+    openDetailModal("Keyboard shortcuts", DashboardLogic.shortcutsHtml());
+  }
+
+  function openQuickAdd() {
+    modal.classList.remove("hidden");
+    document.getElementById("quick-add-text").focus();
+  }
+
+  function closeQuickAdd() {
+    hideModal(modal);
+  }
+
   document.getElementById("detail-modal-close").addEventListener("click", closeDetailModal);
   detailModal.addEventListener("click", function (e) {
     if (e.target === detailModal) closeDetailModal();
   });
+  document.getElementById("new-task-btn").addEventListener("click", openQuickAdd);
+  document.getElementById("help-btn").addEventListener("click", openHelp);
+  document.getElementById("quick-add-close").addEventListener("click", closeQuickAdd);
+  modal.addEventListener("click", function (e) {
+    if (e.target === modal) closeQuickAdd(); // click on the backdrop, not the form
+  });
+
+  // ---- clicks ----
 
   document.addEventListener("click", function (e) {
     var projTrigger = e.target.closest(".proj-open");
@@ -167,17 +293,87 @@
       return;
     }
 
+    // clicking a row on the page also makes it the keyboard selection
+    var navEl = e.target.closest("#page-" + page + " .nav-item");
+    if (navEl) select(navItems().indexOf(navEl), false);
+
     var li = e.target.closest(".task");
     if (!li) return;
     var file = li.getAttribute("data-file");
     var line = li.getAttribute("data-line");
     if (e.target.classList.contains("task-check")) {
-      post("/api/complete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
+      completeTask(file, line);
     } else if (e.target.classList.contains("task-delete")) {
       scheduleDelete(file, line);
     } else {
       openTaskDetail(file, line);
     }
+  });
+
+  // ---- keyboard ----
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      closeQuickAdd();
+      closeDetailModal();
+      if (document.activeElement && document.activeElement.id === "search") document.activeElement.blur();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var tag = (e.target.tagName || "").toLowerCase();
+
+    // Enter in the search box drops you onto the first result, ready for j/k
+    if (e.target.id === "search") {
+      if (e.key === "Enter" || e.key === "ArrowDown") {
+        e.preventDefault();
+        e.target.blur();
+        select(0, true);
+      }
+      return;
+    }
+    // Enter in a task's detail fields saves it
+    if (e.key === "Enter" && tag === "input" && detailBody.contains(e.target)) {
+      var save = detailBody.querySelector(".detail-save");
+      if (save) { e.preventDefault(); save.click(); }
+      return;
+    }
+    if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
+    if (anyModalOpen()) return;
+    // a focused button/link handles its own Enter/Space
+    if ((e.key === "Enter" || e.key === " ") && (tag === "button" || tag === "a")) return;
+
+    var el = selectedEl();
+    var num = parseInt(e.key, 10);
+    if (num >= 1 && num <= PAGES.length) {
+      goTo(PAGES[num - 1]);
+    } else if (e.key === "j" || e.key === "ArrowDown") {
+      if (move(1)) e.preventDefault();
+    } else if (e.key === "k" || e.key === "ArrowUp") {
+      if (move(-1)) e.preventDefault();
+    } else if (e.key === "Enter") {
+      if (el) { e.preventDefault(); activate(el); }
+    } else if (e.key === "x") {
+      if (el && el.classList.contains("task")) completeTask(el.getAttribute("data-file"), el.getAttribute("data-line"));
+    } else if (e.key === "d") {
+      if (el && el.classList.contains("task")) scheduleDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
+    } else if (e.key === "u") {
+      undoLastDelete();
+    } else if (e.key === "/") {
+      e.preventDefault();
+      document.getElementById("search").focus();
+    } else if (e.key === "n") {
+      e.preventDefault();
+      openQuickAdd();
+    } else if (e.key === "?") {
+      e.preventDefault();
+      openHelp();
+    }
+  });
+
+  // tab clicks, attention links and Back/Forward arrive here
+  window.addEventListener("hashchange", function () {
+    var p = pageFromHash();
+    if (p !== page) showPage(p);
   });
 
   document.getElementById("search").addEventListener("input", function (e) {
@@ -203,40 +399,6 @@
       btn.textContent = "Transcribe pending";
       refresh();
     });
-  });
-
-  var modal = document.getElementById("quick-add");
-
-  function openQuickAdd() {
-    modal.classList.remove("hidden");
-    document.getElementById("quick-add-text").focus();
-  }
-
-  function closeQuickAdd() {
-    modal.classList.add("hidden");
-  }
-
-  document.getElementById("new-task-btn").addEventListener("click", openQuickAdd);
-  document.getElementById("quick-add-close").addEventListener("click", closeQuickAdd);
-  modal.addEventListener("click", function (e) {
-    if (e.target === modal) closeQuickAdd(); // click on the backdrop, not the form
-  });
-
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
-      closeQuickAdd();
-      closeDetailModal();
-      return;
-    }
-    var tag = (e.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
-    if (e.key === "/") {
-      e.preventDefault();
-      document.getElementById("search").focus();
-    } else if (e.key === "n") {
-      e.preventDefault();
-      openQuickAdd();
-    }
   });
 
   document.getElementById("quick-add-form").addEventListener("submit", function (e) {
