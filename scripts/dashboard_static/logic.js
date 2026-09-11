@@ -310,6 +310,12 @@
     }).join("") + "</table>";
   }
 
+  function filterBannerHtml(query) {
+    if (!query) return "";
+    return 'Showing matches for “<b dir="auto">' + escapeHtml(query) + '</b>” · ' +
+      '<button type="button" class="filter-clear">Clear</button> or press <kbd>Esc</kbd>';
+  }
+
   // Shortcuts are matched on the physical key (e.code), not the typed character, so they keep
   // working when the keyboard is switched to Hebrew (where "j" types "ח").
   var CODE_ACTIONS = {
@@ -445,7 +451,7 @@
     escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
     taskKey: taskKey, obsidianUrl: obsidianUrl, dueLabel: dueLabel, bucketDue: bucketDue,
     attentionItems: attentionItems, tabInfo: tabInfo, renderTabs: renderTabs, shortcutsHtml: shortcutsHtml,
-    keyAction: keyAction,
+    keyAction: keyAction, filterBannerHtml: filterBannerHtml,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
     renderNeedsTriage: renderNeedsTriage, renderMeetings: renderMeetings,
   };

@@ -452,3 +452,12 @@ test("task text is marked dir=auto so Hebrew renders right-to-left", () => {
   const detail = L.taskDetailHtml({ text: "שלום", file: "f.md", line_text: "x", context: "#phone" }, "2026-09-11");
   assert.match(detail, /id="detail-text" value="שלום" dir="auto"/);
 });
+
+test("filterBannerHtml explains an active filter and how to clear it, escaping the query", () => {
+  assert.equal(L.filterBannerHtml(""), "");
+  const html = L.filterBannerHtml("<b>דוח</b>");
+  assert.match(html, /Showing matches for/);
+  assert.match(html, /&lt;b&gt;דוח&lt;\/b&gt;/);
+  assert.match(html, /class="filter-clear"/);
+  assert.match(html, /<kbd>Esc<\/kbd>/);
+});

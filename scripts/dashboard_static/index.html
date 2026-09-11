@@ -12,7 +12,7 @@
     <h1>GTD</h1>
     <nav class="tabs" id="tabs" aria-label="Pages"></nav>
     <div class="toolbar">
-      <input id="search" type="search" placeholder="Search… ( / )" aria-label="Search" dir="auto">
+      <input id="search" type="text" placeholder="Search… ( / )" aria-label="Search" dir="auto" autocomplete="off">
       <button id="new-task-btn" type="button" title="New task (n)">+ New</button>
       <button id="help-btn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       <button id="theme-toggle" type="button" title="Toggle light/dark" aria-label="Toggle light/dark">◐</button>
@@ -20,6 +20,7 @@
   </div>
 </header>
 <main>
+  <div id="filter-banner" class="filter-banner" hidden></div>
   <section class="page" id="page-today"><div id="today"></div></section>
   <section class="page" id="page-tasks" hidden><div id="tasks"></div></section>
   <section class="page" id="page-waiting" hidden><div id="waiting"></div></section>
