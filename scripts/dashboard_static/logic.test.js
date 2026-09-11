@@ -52,7 +52,7 @@ test("render produces per-tab counts for a populated state", () => {
   };
   const out = L.render(state, "", "2026-09-10");
   const counts = Object.fromEntries(Object.entries(out.tabs).map(([k, v]) => [k, v.count]));
-  assert.deepEqual(counts, { today: 1, tasks: 2, inbox: 0, waiting: 1, projects: 1 });
+  assert.deepEqual(counts, { today: 1, week: 1, tasks: 2, inbox: 0, waiting: 1, projects: 1 });
   assert.match(out.tasksHtml, /Finalize homepage wireframe/);
   assert.match(out.projectsHtml, /Website Redesign/);
   assert.match(out.projectsHtml, /Someday \/ Maybe<\/h2><p class="empty">None\.<\/p>/);
@@ -364,10 +364,11 @@ test("tabInfo flags overdue work, triage and overdue reviews", () => {
 
 test("renderTabs numbers the pages, marks the current one and shows alert dots", () => {
   const info = { today: { count: 1, alert: true }, tasks: { count: 3, alert: false },
-    waiting: { count: 0, alert: false }, projects: { count: 2, alert: false }, inbox: { count: 0, alert: false } };
+    waiting: { count: 0, alert: false }, projects: { count: 2, alert: false }, inbox: { count: 0, alert: false },
+    week: { count: 0, alert: false } };
   const html = L.renderTabs(info, "tasks");
   assert.match(html, /href="#today" class="tab"><kbd>1<\/kbd>Today <span class="tab-n">1<\/span><span class="dot"/);
-  assert.match(html, /href="#tasks" class="tab current" aria-current="page"><kbd>2<\/kbd>Tasks/);
+  assert.match(html, /href="#tasks" class="tab current" aria-current="page"><kbd>3<\/kbd>Tasks/);
   assert.equal((html.match(/class="dot"/g) || []).length, 1);
 });
 
@@ -514,4 +515,29 @@ test("search filters today's meetings by subject", () => {
 
 test("localDateTime formats local time without a timezone", () => {
   assert.equal(L.localDateTime(new Date(2026, 8, 11, 9, 5, 7)), "2026-09-11T09:05:07");
+});
+
+test("the Week page has a column per day with that day's meetings and due tasks", () => {
+  const state = { ...BASE, calendar: CAL, due_soon: [
+    { text: "Late one", file: "f.md", line_text: "a", due: "2026-09-09" },
+    { text: "Pay rent", file: "f.md", line_text: "b", due: "2026-09-12" },
+    { text: "Next week", file: "f.md", line_text: "c", due: "2026-09-18" },
+  ] };
+  const html = L.render(state, "", "2026-09-11", {}, "2026-09-11T08:00").weekHtml;
+  const heads = [...html.matchAll(/<div class="ctx-h">([^<]*)<\/div>/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ["Overdue", "Today · Fri 11 Sep", "Tomorrow · Sat 12 Sep", "Sun 13 Sep", "Mon 14 Sep",
+    "Tue 15 Sep", "Wed 16 Sep", "Thu 17 Sep"]);
+  const sat = html.slice(html.indexOf("Tomorrow · Sat"), html.indexOf("Sun 13 Sep"));
+  assert.match(sat, /Tomorrow thing/);
+  assert.match(sat, /Pay rent/);
+  assert.doesNotMatch(html, /Next week/); // a week out: not on this 7-day page
+  assert.match(html.slice(0, html.indexOf("Today ·")), /Late one/);
+  assert.match(html, /Nothing scheduled/);
+});
+
+test("the Week page has no Overdue column when nothing is overdue, and counts the week's tasks", () => {
+  const state = { ...BASE, due_soon: [{ text: "Pay rent", file: "f.md", line_text: "b", due: "2026-09-12" }] };
+  const out = L.render(state, "", "2026-09-11");
+  assert.doesNotMatch(out.weekHtml, />Overdue</);
+  assert.deepEqual(out.tabs.week, { count: 1, alert: false });
 });

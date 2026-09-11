@@ -130,6 +130,13 @@ ul { list-style: none; margin: 0; padding: 0; }
 .ev-loc { font-size: 0.78rem; color: var(--muted); }
 .event-past { opacity: 0.55; }
 .cal-note { color: var(--muted); font-size: 0.82rem; margin: 0 0 14px; }
+.week-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 18px 22px; align-items: start;
+}
+.day-today .ctx-h { color: var(--accent); }
+.day-overdue .ctx-h { color: var(--red); }
+.day-col .ev-time { min-width: 0; }
 .inbox-list a { flex: 1 1 12em; color: var(--text); }
 
 /* ---- modals ---- */
