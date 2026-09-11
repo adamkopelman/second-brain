@@ -86,8 +86,10 @@ def edit_task(vault: Path, file: str, line_text: str,
     links = BD.LINK_RE.findall(body)
     text = new_text.strip() if new_text is not None else DP._clean_no_links(body)
 
-    if new_due is not None:
+    if new_due:
         fields["due"] = new_due
+    elif new_due == "":  # an emptied date field means "no due date"
+        fields.pop("due", None)
 
     if new_context:
         ctx_bare = new_context.lstrip("#")
@@ -103,7 +105,8 @@ def edit_task(vault: Path, file: str, line_text: str,
     return lines[i]
 
 
-_SLUG_RE = _re.compile(r"[^a-z0-9]+")
+# Keep letters in any script (Hebrew captures used to all become "item.md") — \w is Unicode-aware.
+_SLUG_RE = _re.compile(r"[\W_]+")
 
 
 def _slugify(text: str) -> str:
