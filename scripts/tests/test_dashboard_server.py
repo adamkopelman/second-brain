@@ -234,3 +234,31 @@ def test_transcribe_endpoint_returns_500_when_whisper_binary_missing(tmp_path):
             assert e.code == 500
     finally:
         server.shutdown()
+
+
+class _FakeCalendar:
+    def snapshot(self):
+        return {"status": "ok", "error": None, "events": [{"subject": "Standup"}], "updated": "now"}
+
+
+def test_state_includes_the_calendar_snapshot(tmp_path):
+    _mk_vault(tmp_path)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), S.make_handler(tmp_path, calendar=_FakeCalendar()))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with request.urlopen(f"http://127.0.0.1:{server.server_port}/api/state") as r:
+            data = json.loads(r.read())
+        assert data["calendar"]["events"][0]["subject"] == "Standup"
+    finally:
+        server.shutdown()
+
+
+def test_state_calendar_is_off_without_a_calendar(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with request.urlopen(f"http://127.0.0.1:{server.server_port}/api/state") as r:
+            data = json.loads(r.read())
+        assert data["calendar"]["status"] == "off"
+    finally:
+        server.shutdown()
