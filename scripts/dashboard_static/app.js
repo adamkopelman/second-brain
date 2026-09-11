@@ -42,6 +42,11 @@
     localStorage.setItem("dashboard-theme", theme);
   }
 
+  // Rows scroll clear of the sticky header (see .nav-item scroll-margin in style.css).
+  function syncTopbarHeight() {
+    document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px");
+  }
+
   function renderAll() {
     if (!state) return;
     var out = DashboardLogic.render(state, query, today(), pendingDeletes);
@@ -71,7 +76,11 @@
     var el = items[i];
     el.classList.add("selected");
     sel = { key: el.getAttribute("data-key"), index: i };
-    if (scroll) el.scrollIntoView({ block: "nearest" });
+    if (scroll) {
+      // the first row means "top of the page": show the section titles above it too
+      if (i === 0) window.scrollTo(0, 0);
+      else el.scrollIntoView({ block: "nearest" });
+    }
   }
 
   // After a re-render, keep the same row selected; if it's gone (completed, deleted elsewhere),
@@ -426,6 +435,8 @@
     });
   });
 
+  syncTopbarHeight();
+  window.addEventListener("resize", syncTopbarHeight);
   applyTheme(localStorage.getItem("dashboard-theme") || "light");
   refresh();
   setInterval(refresh, POLL_MS);
