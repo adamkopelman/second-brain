@@ -268,6 +268,17 @@ def test_state_calendar_is_off_without_a_calendar(tmp_path):
         server.shutdown()
 
 
+def test_get_recorder_js(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with request.urlopen(f"http://127.0.0.1:{server.server_port}/recorder.js") as r:
+            assert r.headers["Content-Type"].startswith("application/javascript")
+            assert b"MeetingRecorder" in r.read()
+    finally:
+        server.shutdown()
+
+
 def _post_audio(server, query, body, content_type="application/octet-stream"):
     req = request.Request(f"http://127.0.0.1:{server.server_port}/api/record-meeting?{query}", data=body,
                           method="POST", headers={"Content-Type": content_type})

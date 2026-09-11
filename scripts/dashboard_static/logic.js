@@ -287,6 +287,24 @@
       (ev.location ? '<span class="ev-loc" dir="auto">' + escapeHtml(ev.location) + "</span>" : "") + "</li>";
   }
 
+  // The timed meeting under way now, or starting within 10 minutes — used to name a recording.
+  function currentEvent(calendar, now) {
+    var d = new Date(now + ":00");
+    d.setMinutes(d.getMinutes() + 10);
+    var soon = localDateTime(d).slice(0, 16);
+    var hits = ((calendar && calendar.events) || []).filter(function (ev) {
+      return !ev.all_day && ev.start.slice(0, 16) <= soon && (ev.end || "").slice(0, 16) > now;
+    });
+    return hits[0] || null;
+  }
+
+  function recordingUrl(meta) {
+    var q = "started=" + encodeURIComponent(meta.started);
+    if (meta.title) q += "&title=" + encodeURIComponent(meta.title);
+    if (meta.attendees) q += "&attendees=" + encodeURIComponent(meta.attendees);
+    return "/api/record-meeting?" + q;
+  }
+
   function calendarNote(calendar) {
     var status = calendar && calendar.status;
     if (status === "loading") return '<p class="cal-note">Loading your Outlook calendar…</p>';
@@ -406,9 +424,10 @@
   var SHORTCUTS = [
     ["1 – 6", "Switch page"], ["j / ↓", "Next item"], ["k / ↑", "Previous item"],
     ["h / ←", "Column to the left"], ["l / →", "Column to the right"],
-    ["Enter", "Open the selected item"], ["x", "Complete the selected task"],
+    ["Enter", "Open the selected item (on a meeting: record it)"], ["x", "Complete the selected task"],
     ["d", "Delete the selected task (5 s to undo)"], ["u", "Undo the last delete"],
-    ["/", "Search"], ["n", "New task"], ["Esc", "Close / leave search"], ["?", "Show this list"],
+    ["/", "Search (Enter jumps into the results)"], ["n", "New task"], ["r", "Record a meeting / stop recording"],
+    ["Esc", "Close, or clear the search"], ["?", "Show this list"],
   ];
 
   function shortcutsHtml() {
@@ -559,7 +578,7 @@
     escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
     taskKey: taskKey, obsidianUrl: obsidianUrl, dueLabel: dueLabel, bucketDue: bucketDue,
     attentionItems: attentionItems, tabInfo: tabInfo, renderTabs: renderTabs, shortcutsHtml: shortcutsHtml,
-    keyAction: keyAction, localDateTime: localDateTime, filterBannerHtml: filterBannerHtml, pickHorizontal: pickHorizontal,
+    keyAction: keyAction, localDateTime: localDateTime, currentEvent: currentEvent, recordingUrl: recordingUrl, filterBannerHtml: filterBannerHtml, pickHorizontal: pickHorizontal,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
     renderNeedsTriage: renderNeedsTriage,
   };

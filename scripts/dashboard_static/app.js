@@ -131,6 +131,8 @@
       undoDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
     } else if (el.classList.contains("task")) {
       openTaskDetail(el.getAttribute("data-file"), el.getAttribute("data-line"));
+    } else if (el.classList.contains("event")) {
+      toggleRecording({ subject: el.getAttribute("data-subject"), attendees: el.getAttribute("data-attendees") || "" });
     } else {
       var target = el.querySelector(".proj-open, a[href]");
       if (target) target.click();
@@ -425,9 +427,89 @@
       case "search": searchEl.focus(); return true;
       case "new": openQuickAdd(); return true;
       case "help": openHelp(); return true;
+      case "record": toggleRecording(); return true;
     }
     return false;
   }
+
+  // ---- recording ----
+
+  var RECORD_LABEL = "● Record";
+  var recordBtn = document.getElementById("record-btn");
+  var rec = null;     // { handle, meta, timer } while recording
+  var unsaved = null; // { pcm, meta } when an upload failed — kept so the audio isn't lost
+
+  function setRecordButton(text, cls) {
+    recordBtn.textContent = text;
+    recordBtn.className = cls || "";
+  }
+
+  // ev: the calendar meeting being recorded ({subject, attendees}); by default whichever is on now
+  function toggleRecording(ev) {
+    if (unsaved) { upload(unsaved.pcm, unsaved.meta); return; }
+    if (rec) stopRecording();
+    else startRecording(ev);
+  }
+
+  function startRecording(ev) {
+    recordBtn.disabled = true;
+    MeetingRecorder.start().then(function (handle) {
+      var e = ev || DashboardLogic.currentEvent(state && state.calendar, DashboardLogic.localDateTime(new Date()).slice(0, 16));
+      rec = { handle: handle, meta: {
+        started: DashboardLogic.localDateTime(handle.startedAt),
+        title: e ? e.subject : "", attendees: e ? e.attendees || "" : "",
+      } };
+      recordBtn.disabled = false;
+      tick();
+      rec.timer = setInterval(tick, 1000);
+    }).catch(function () {
+      recordBtn.disabled = false;
+      flash("Mic unavailable");
+    });
+  }
+
+  function tick() {
+    var secs = Math.floor((Date.now() - rec.handle.startedAt.getTime()) / 1000);
+    setRecordButton("■ " + Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0") +
+      (rec.meta.title ? " · " + rec.meta.title : ""), "recording");
+  }
+
+  function stopRecording() {
+    var r = rec;
+    rec = null;
+    clearInterval(r.timer);
+    recordBtn.disabled = true;
+    setRecordButton("Saving…");
+    r.handle.stop().then(function (pcm) { upload(pcm, r.meta); }, function () { flash("Recording failed"); });
+  }
+
+  function upload(pcm, meta) {
+    recordBtn.disabled = true;
+    setRecordButton("Saving…");
+    fetch(DashboardLogic.recordingUrl(meta), {
+      method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: pcm.buffer,
+    }).then(function (res) {
+      if (!res.ok) throw new Error("save failed: " + res.status);
+      unsaved = null;
+      flash("Saved ✓ transcribing…");
+      refresh();
+    }).catch(function () {
+      unsaved = { pcm: pcm, meta: meta };
+      recordBtn.disabled = false;
+      setRecordButton("Save failed — retry", "recording");
+    });
+  }
+
+  function flash(text) {
+    recordBtn.disabled = false;
+    setRecordButton(text);
+    setTimeout(function () { if (!rec && !unsaved) setRecordButton(RECORD_LABEL); }, 4000);
+  }
+
+  recordBtn.addEventListener("click", function () { toggleRecording(); });
+  window.addEventListener("beforeunload", function (e) {
+    if (rec || unsaved) { e.preventDefault(); e.returnValue = ""; }
+  });
 
   // tab clicks, attention links and Back/Forward arrive here
   window.addEventListener("hashchange", function () {
