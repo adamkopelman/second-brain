@@ -80,6 +80,8 @@ ul { list-style: none; margin: 0; padding: 0; }
   padding: 5px 6px; border-bottom: 1px solid var(--border); border-radius: 4px; font-size: 0.9rem;
 }
 .nav-item.selected { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
+/* keep a selected row (and the section title above it) out from under the sticky header */
+.nav-item { scroll-margin-top: calc(var(--topbar-h, 56px) + 40px); scroll-margin-bottom: 24px; }
 .task-text { flex: 1 1 12em; cursor: pointer; }
 .proj, .meeting { min-width: 0; overflow-wrap: anywhere; }
 .proj { color: var(--accent); font-size: 0.78rem; }
