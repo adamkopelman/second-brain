@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dashboard_parser as P
 import dashboard_writer as W
+import outlook_calendar as OC
 
 STATIC_DIR = Path(__file__).resolve().parent / "dashboard_static"
 STATIC_FILES = {
@@ -21,7 +22,10 @@ STATIC_FILES = {
 }
 
 
-def make_handler(vault: Path):
+CALENDAR_OFF = {"status": "off", "error": None, "events": [], "updated": None}
+
+
+def make_handler(vault: Path, calendar=None, auto_transcribe: bool = False):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             pass  # keep test/console output quiet
@@ -42,7 +46,9 @@ def make_handler(vault: Path):
         def do_GET(self):
             path = urlparse(self.path).path
             if path == "/api/state":
-                self._send_json(P.collect_state(vault))
+                state = P.collect_state(vault)
+                state["calendar"] = calendar.snapshot() if calendar else dict(CALENDAR_OFF)
+                self._send_json(state)
                 return
             if path in STATIC_FILES:
                 fname, ctype = STATIC_FILES[path]
@@ -116,9 +122,15 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("vault", nargs="?", default=".")
     ap.add_argument("--port", type=int, default=8787)
+    ap.add_argument("--no-outlook", action="store_true", help="don't read the Outlook calendar")
     a = ap.parse_args(argv)
     vault = Path(a.vault).resolve()
-    server = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(vault))
+    calendar = None
+    if not a.no_outlook:
+        calendar = OC.CalendarCache(OC.resolve_command())
+        calendar.start()
+    server = ThreadingHTTPServer(("127.0.0.1", a.port),
+                                 make_handler(vault, calendar=calendar, auto_transcribe=True))
     print(f"Dashboard server running at http://127.0.0.1:{a.port} (vault: {vault})")
     try:
         server.serve_forever()
