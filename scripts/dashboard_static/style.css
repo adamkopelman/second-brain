@@ -53,6 +53,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 48px; }
 /* single-list pages read better narrow, so a row's project/date stays near its text */
 #today, #waiting, #projects, #meetings { max-width: 760px; }
 .section { margin-bottom: 22px; }
+.filter-banner {
+  margin: 0 0 14px; padding: 6px 10px; border-radius: 8px; font-size: 0.85rem;
+  background: var(--sel); color: var(--text);
+}
+.filter-clear { border: none; background: none; color: var(--accent); cursor: pointer; padding: 0; font: inherit; }
 .section-h {
   font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
   color: var(--muted); margin: 0 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border);

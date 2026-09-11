@@ -59,7 +59,16 @@
     PAGES.forEach(function (p) {
       document.getElementById("page-" + p).hidden = p !== page;
     });
+    var banner = document.getElementById("filter-banner");
+    banner.innerHTML = DashboardLogic.filterBannerHtml(query);
+    banner.hidden = !query;
     restoreSelection();
+  }
+
+  function setQuery(q) {
+    query = q;
+    searchEl.value = q;
+    renderAll();
   }
 
   // ---- keyboard selection ----
@@ -256,6 +265,8 @@
   // ---- clicks ----
 
   document.addEventListener("click", function (e) {
+    if (e.target.closest(".filter-clear")) { setQuery(""); return; }
+
     var projTrigger = e.target.closest(".proj-open");
     if (projTrigger) {
       e.preventDefault();
@@ -325,9 +336,10 @@
 
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
-      closeQuickAdd();
-      closeDetailModal();
-      if (document.activeElement === searchEl) searchEl.blur();
+      if (anyModalOpen()) { closeQuickAdd(); closeDetailModal(); return; }
+      // Esc in the box, or anywhere while a filter is active, clears the search
+      if (e.target === searchEl) searchEl.blur();
+      if (query) setQuery("");
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
