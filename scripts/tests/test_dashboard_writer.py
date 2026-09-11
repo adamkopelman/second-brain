@@ -94,6 +94,24 @@ def test_create_task_with_project_creates_missing_heading(tmp_path):
     assert "## Next actions" in text
     assert "- [ ] Do the thing #next #anywhere" in text
 
+def test_create_task_names_a_hebrew_capture_after_its_text(tmp_path):
+    _mk_vault(tmp_path)
+    a = W.create_task(tmp_path, "לקנות מתנה לדנה", "errands")
+    b = W.create_task(tmp_path, "להתקשר לאינסטלטור", "phone")
+    assert a["file"].endswith(" לקנות-מתנה-לדנה.md")  # was "item.md" for every Hebrew task
+    assert b["file"].endswith(" להתקשר-לאינסטלטור.md")
+    assert W.create_task(tmp_path, "!!!", "phone")["file"].endswith(" item.md")  # nothing usable left
+
+
+def test_edit_task_with_an_empty_due_removes_the_due_date(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "10 Projects" / "P.md").write_text(
+        "# P\n- [ ] Pick SSG #next #computer [due:: 2026-09-10]\n", encoding="utf-8")
+    new_line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] Pick SSG #next #computer [due:: 2026-09-10]",
+                           new_text="Pick SSG", new_due="")
+    assert new_line == "- [ ] Pick SSG #next #computer"
+
+
 def test_create_task_unknown_project_raises(tmp_path):
     _mk_vault(tmp_path)
     with pytest.raises(FileNotFoundError):
