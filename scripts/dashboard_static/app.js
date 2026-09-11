@@ -53,6 +53,7 @@
     var out = DashboardLogic.render(state, query, today(), pendingDeletes, DashboardLogic.localDateTime(new Date()).slice(0, 16));
     document.getElementById("tabs").innerHTML = DashboardLogic.renderTabs(out.tabs, page);
     document.getElementById("today").innerHTML = out.todayHtml;
+    document.getElementById("week").innerHTML = out.weekHtml;
     document.getElementById("tasks").innerHTML = out.tasksHtml;
     document.getElementById("waiting").innerHTML = out.waitingHtml;
     document.getElementById("projects").innerHTML = out.projectsHtml;

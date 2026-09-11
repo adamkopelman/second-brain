@@ -2,10 +2,11 @@
 // Pure rendering/filtering logic for the local dashboard. No DOM, no fetch —
 // runs identically under Node's test runner and in the browser.
 (function (root) {
-  var PAGES = ["today", "tasks", "inbox", "waiting", "projects"];
+  var PAGES = ["today", "week", "tasks", "inbox", "waiting", "projects"];
   var PAGE_LABELS = { today: "Today", week: "Week", tasks: "Tasks", inbox: "Inbox", waiting: "Waiting", projects: "Projects" };
   var CTX_ORDER = ["#computer", "#phone", "#errands", "#home", "#office", "#anywhere", "#agenda"];
   var WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
   function escapeHtml(s) {
@@ -335,6 +336,34 @@
     return html;
   }
 
+  function dayHeading(date, today) {
+    var d = new Date(date + "T00:00:00");
+    var label = WEEKDAYS[d.getDay()] + " " + d.getDate() + " " + MONTHS[d.getMonth()];
+    if (date === today) return "Today · " + label;
+    if (date === addDays(today, 1)) return "Tomorrow · " + label;
+    return label;
+  }
+
+  // A column per day (today + 6) with that day's meetings and due tasks; "Overdue" first if needed.
+  function renderWeek(state, query, today, pending, now) {
+    var tasks = filterTasks(state.due_soon || [], query);
+    function col(title, events, due, cls) {
+      var body = (events.length ? '<ul class="event-list">' + events.map(function (ev) { return eventLine(ev, now); }).join("") + "</ul>" : "") +
+        (due.length ? '<ul class="task-list">' + due.map(function (t) { return taskLine(t, today, pending); }).join("") + "</ul>" : "");
+      return '<div class="day-col' + (cls ? " " + cls : "") + '"><div class="ctx-h">' + escapeHtml(title) + "</div>" +
+        (body || '<p class="empty">Nothing scheduled</p>') + "</div>";
+    }
+    var cols = [];
+    var overdue = tasks.filter(function (t) { return t.due < today; });
+    if (overdue.length) cols.push(col("Overdue", [], overdue, "day-overdue"));
+    for (var i = 0; i < 7; i++) {
+      var date = addDays(today, i);
+      var due = tasks.filter(function (t) { return t.due === date; });
+      cols.push(col(dayHeading(date, today), filterEvents(eventsOn(state.calendar, date), query), due, i === 0 ? "day-today" : ""));
+    }
+    return calendarNote(state.calendar) + '<div class="week-grid">' + cols.join("") + "</div>";
+  }
+
   // Per-tab counts (respecting the search query) and whether the tab should show a red dot.
   function tabInfo(state, query, today) {
     var ctxs = state.tasks_by_context || {};
@@ -349,6 +378,10 @@
     var att = attentionItems(state, today);
     return {
       today: { count: dueSoon.length, alert: b.overdue.length > 0 || att.some(function (a) { return a.alert; }) },
+      week: {
+        count: dueSoon.filter(function (t) { return t.due <= addDays(today, 6); }).length,
+        alert: b.overdue.length > 0,
+      },
       tasks: { count: taskCount, alert: anyTaskOverdue || (ctxs["#unknown"] || []).length > 0 },
       waiting: { count: filterTasks(state.waiting || [], query).length, alert: false },
       projects: {
@@ -371,7 +404,7 @@
   }
 
   var SHORTCUTS = [
-    ["1 – 5", "Switch page"], ["j / ↓", "Next item"], ["k / ↑", "Previous item"],
+    ["1 – 6", "Switch page"], ["j / ↓", "Next item"], ["k / ↑", "Previous item"],
     ["h / ←", "Column to the left"], ["l / →", "Column to the right"],
     ["Enter", "Open the selected item"], ["x", "Complete the selected task"],
     ["d", "Delete the selected task (5 s to undo)"], ["u", "Undo the last delete"],
@@ -513,6 +546,7 @@
     return {
       tabs: tabInfo(state, query, today),
       todayHtml: renderToday(state, query, today, pending, now),
+      weekHtml: renderWeek(state, query, today, pending, now),
       tasksHtml: renderTasksPage(state, query, today, pending),
       inboxHtml: renderInbox(state.inbox_items || [], query, state.vault_name),
       waitingHtml: renderSimpleList(state.waiting || [], today, query, pending, "Not waiting on anything."),
