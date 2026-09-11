@@ -172,11 +172,13 @@
   function renderMeetings(meetings, vaultName) {
     if (!meetings || !meetings.length) return '<p class="empty">No meetings yet.</p>';
     return "<ul>" + meetings.map(function (m) {
-      var tPill = m.transcription_status === "done"
-        ? '<span class="pill">transcribed</span>'
-        : (m.transcription_status === "failed"
-            ? '<span class="pill overdue">transcription failed</span>'
-            : '<span class="pill overdue">pending transcription</span>');
+      // no status at all = a note written by hand, with no recording to transcribe
+      var tPill = !m.transcription_status ? ""
+        : m.transcription_status === "done"
+          ? '<span class="pill">transcribed</span>'
+          : (m.transcription_status === "failed"
+              ? '<span class="pill overdue">transcription failed</span>'
+              : '<span class="pill overdue">pending transcription</span>');
       var sPill = m.transcription_status === "done"
         ? (m.summary_status === "done"
             ? '<span class="pill">summarized</span>'
