@@ -208,11 +208,54 @@ test("renderMeetings lists meetings with status pills and an Obsidian link", () 
     { name: "2026-09-09 Standup", file: "Meetings/2026-09-09 Standup.md", date: "2026-09-09",
       transcription_status: "pending", summary_status: "pending" },
   ];
-  const html = L.renderMeetings(meetings);
+  const html = L.renderMeetings(meetings, "second brain");
   assert.match(html, /2026-09-10 Sync/);
   assert.match(html, /pending summary/);
   assert.match(html, /pending transcription/);
-  assert.match(html, /obsidian:\/\/open\?path=Meetings%2F2026-09-10%20Sync\.md/);
+  assert.match(html, /obsidian:\/\/open\?vault=second%20brain&amp;file=Meetings%2F2026-09-10%20Sync\.md/);
+});
+
+test("obsidianUrl addresses a note by vault name and vault-relative path", () => {
+  assert.equal(L.obsidianUrl("second brain", "Meetings/2026-09-10 Sync.md"),
+    "obsidian://open?vault=second%20brain&file=Meetings%2F2026-09-10%20Sync.md");
+});
+
+test("projectDetailHtml links to the note by vault name, not a relative path", () => {
+  const p = { name: "Website Redesign", file: "10 Projects/Website Redesign.md", review: null, outcome: null };
+  const html = L.projectDetailHtml(p, [], "2026-09-10", "second-brain");
+  assert.match(html, /href="obsidian:\/\/open\?vault=second-brain&amp;file=10%20Projects%2FWebsite%20Redesign\.md"/);
+});
+
+test("taskLine shows a chip for each linked note, e.g. the person you're waiting on", () => {
+  const out = L.render({ inbox_count: 0, tasks_by_context: {}, due_soon: [], active_projects: [], someday_projects: [],
+    waiting: [{ text: "Logo files", file: "f.md", line_text: "x", project: "Website Redesign", links: ["Design <Agency>"] }] },
+    "", "2026-09-10");
+  assert.match(out.waitingHtml, /class="link-chip">Design &lt;Agency&gt;</);
+});
+
+test("render shows an Undo row in place of a task whose delete is pending", () => {
+  const t = { text: "Call hosting provider", file: "f.md", line_text: "- [ ] Call hosting provider #next #phone", project: "P" };
+  const state = { inbox_count: 0, tasks_by_context: { "#phone": [t] }, waiting: [], due_soon: [],
+    active_projects: [], someday_projects: [] };
+  const pending = {};
+  pending[L.taskKey(t.file, t.line_text)] = true;
+  const out = L.render(state, "", "2026-09-10", pending);
+  assert.match(out.tasksHtml, /class="task-undo"/);
+  assert.doesNotMatch(out.tasksHtml, /class="task-check"/);
+});
+
+test("search also filters Waiting and Due soon, matching linked names", () => {
+  const state = { inbox_count: 0, tasks_by_context: {}, active_projects: [], someday_projects: [],
+    waiting: [
+      { text: "Logo files", file: "f.md", line_text: "a", links: ["Design Agency"] },
+      { text: "Figures", file: "f.md", line_text: "b", links: ["Sam Rivera"] },
+    ],
+    due_soon: [{ text: "Pay invoice", file: "f.md", line_text: "c", due: "2026-09-12" }],
+  };
+  const out = L.render(state, "agency", "2026-09-10");
+  assert.match(out.waitingHtml, /Logo files/);
+  assert.doesNotMatch(out.waitingHtml, /Figures/);
+  assert.doesNotMatch(out.dueSoonHtml, /Pay invoice/);
 });
 
 test("renderMeetings shows an empty state with no meetings", () => {

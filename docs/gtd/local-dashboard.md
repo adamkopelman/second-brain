@@ -21,7 +21,10 @@ it, and there's no login because there's nothing to log into.
   someday/maybe on one no-scroll screen.
 - Checking a task's box, editing its text or due date, or deleting it writes straight to the real
   `.md` file — Obsidian and the browser page never disagree, because there's only ever one copy of
-  the data.
+  the data. Deleting shows an **Undo** for 5 seconds; the line is only removed from the file once
+  that window closes.
+- Linked notes on a task (e.g. the `[[Person]]` on a `#waiting` item) show as chips beside its text,
+  and search matches them too.
 - "New task" (press `n` or use the form) captures to `00 Inbox/` if you don't pick a project, or
   inserts under that project's `## Next actions` heading if you do — matching `/gtd-capture`'s and
   QuickAdd's conventions.

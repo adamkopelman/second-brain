@@ -16,17 +16,32 @@
     return d < t;
   }
 
+  function taskKey(file, lineText) {
+    return file + "|" + lineText;
+  }
+
+  // Obsidian's `path` param wants an absolute filesystem path; a vault-relative one needs `vault` + `file`.
+  function obsidianUrl(vaultName, file) {
+    return "obsidian://open?vault=" + encodeURIComponent(vaultName || "") + "&file=" + encodeURIComponent(file);
+  }
+
   function filterTasks(tasks, query) {
     if (!query) return tasks;
     var q = query.toLowerCase();
     return tasks.filter(function (t) {
       return (t.text || "").toLowerCase().indexOf(q) !== -1 ||
         (t.project || "").toLowerCase().indexOf(q) !== -1 ||
-        (t.context || "").toLowerCase().indexOf(q) !== -1;
+        (t.context || "").toLowerCase().indexOf(q) !== -1 ||
+        (t.links || []).some(function (l) { return l.toLowerCase().indexOf(q) !== -1; });
     });
   }
 
-  function taskLine(t, today) {
+  function taskLine(t, today, pending) {
+    if (pending && pending[taskKey(t.file, t.line_text)]) {
+      return '<li class="task-pending"><span class="task-text">Deleted: <s>' + escapeHtml(t.text) + "</s></span>" +
+        '<button type="button" class="task-undo" data-file="' + escapeHtml(t.file) + '" data-line="' +
+        escapeHtml(t.line_text) + '">Undo</button></li>';
+    }
     var due = t.due
       ? '<span class="due' + (isOverdue(t.due, today) ? " overdue" : "") + '">' +
         escapeHtml(t.due) + "</span>"
@@ -36,32 +51,36 @@
       : (t.meeting
           ? '<span class="meeting meeting-open" data-file="' + escapeHtml(t.file) + '">' + escapeHtml(t.meeting) + "</span>"
           : "");
+    var links = (t.links || []).map(function (l) {
+      return '<span class="link-chip">' + escapeHtml(l) + "</span>";
+    }).join("");
     return '<li class="task" data-file="' + escapeHtml(t.file) + '" data-line="' +
       escapeHtml(t.line_text) + '">' +
       '<input type="checkbox" class="task-check">' +
-      '<span class="task-text">' + escapeHtml(t.text) + "</span>" +
+      '<span class="task-text">' + escapeHtml(t.text) + links + "</span>" +
       proj + due +
       '<button class="task-delete" title="Delete">×</button>' +
       "</li>";
   }
 
-  function renderTasksByContext(tasksByContext, query, today) {
+  function renderTasksByContext(tasksByContext, query, today, pending) {
     var ctxOrder = ["#computer", "#phone", "#errands", "#home", "#office", "#anywhere", "#agenda"];
     var html = "";
     ctxOrder.forEach(function (ctx) {
       var items = filterTasks(tasksByContext[ctx] || [], query);
       if (!items.length) return;
       html += '<div class="ctx-col"><div class="ctx-h">' + escapeHtml(ctx.slice(1)) +
-        " (" + items.length + ')</div><ul class="task-list">' +
-        items.map(function (t) { return taskLine(t, today); }).join("") + "</ul></div>";
+        ' <span class="ctx-n">' + items.length + '</span></div><ul class="task-list">' +
+        items.map(function (t) { return taskLine(t, today, pending); }).join("") + "</ul></div>";
     });
     return html || '<p class="empty">No tasks.</p>';
   }
 
-  function renderSimpleList(items, today) {
+  function renderSimpleList(items, today, query, pending) {
+    items = filterTasks(items, query);
     if (!items.length) return '<p class="empty">Nothing here.</p>';
     return '<ul class="task-list">' +
-      items.map(function (t) { return taskLine(t, today); }).join("") + "</ul>";
+      items.map(function (t) { return taskLine(t, today, pending); }).join("") + "</ul>";
   }
 
   function renderProjects(projects) {
@@ -83,7 +102,7 @@
     function addAll(list) {
       (list || []).forEach(function (t) {
         if (t.project !== projectName) return;
-        var key = t.file + "|" + t.line_text;
+        var key = taskKey(t.file, t.line_text);
         if (seen[key]) return;
         seen[key] = true;
         out.push(t);
@@ -126,7 +145,7 @@
     );
   }
 
-  function projectDetailHtml(p, relatedTasks, today) {
+  function projectDetailHtml(p, relatedTasks, today, vaultName) {
     var pill = p.review_overdue
       ? '<span class="pill overdue">review overdue</span>'
       : (p.review ? '<span class="pill">review ' + escapeHtml(p.review) + "</span>" : "");
@@ -139,18 +158,18 @@
       escapeHtml(p.name) + pill + "</span></div>" +
       '<div class="detail-row"><span class="detail-label">Outcome</span><span>' + outcome + "</span></div>" +
       '<div class="detail-label" style="margin-top:6px;">Open tasks</div>' + tasksHtml +
-      '<div class="detail-actions"><a class="detail-open-link" href="obsidian://open?path=' +
-      encodeURIComponent(p.file) + '">Open full note in Obsidian</a></div>'
+      '<div class="detail-actions"><a class="detail-open-link" href="' +
+      escapeHtml(obsidianUrl(vaultName, p.file)) + '">Open full note in Obsidian</a></div>'
     );
   }
 
-  function renderNeedsTriage(state, today) {
+  function renderNeedsTriage(state, today, pending) {
     var items = (state.tasks_by_context || {})["#unknown"] || [];
     if (!items.length) return '<p class="empty">Nothing to triage.</p>';
-    return '<ul class="task-list">' + items.map(function (t) { return taskLine(t, today); }).join("") + "</ul>";
+    return '<ul class="task-list">' + items.map(function (t) { return taskLine(t, today, pending); }).join("") + "</ul>";
   }
 
-  function renderMeetings(meetings) {
+  function renderMeetings(meetings, vaultName) {
     if (!meetings || !meetings.length) return '<p class="empty">No meetings yet.</p>';
     return "<ul>" + meetings.map(function (m) {
       var tPill = m.transcription_status === "done"
@@ -163,12 +182,12 @@
             ? '<span class="pill">summarized</span>'
             : '<span class="pill overdue">pending summary</span>')
         : "";
-      return '<li><a href="obsidian://open?path=' + encodeURIComponent(m.file) + '">' +
+      return '<li><a href="' + escapeHtml(obsidianUrl(vaultName, m.file)) + '">' +
         escapeHtml(m.name) + "</a>" + tPill + sPill + "</li>";
     }).join("") + "</ul>";
   }
 
-  function render(state, query, today) {
+  function render(state, query, today, pending) {
     var totalTasks = Object.keys(state.tasks_by_context || {}).reduce(function (n, k) {
       return n + state.tasks_by_context[k].length;
     }, 0);
@@ -179,18 +198,19 @@
         waiting: (state.waiting || []).length,
         due: (state.due_soon || []).length,
       },
-      tasksHtml: renderTasksByContext(state.tasks_by_context || {}, query, today),
-      dueSoonHtml: renderSimpleList(state.due_soon || [], today),
-      waitingHtml: renderSimpleList(state.waiting || [], today),
+      tasksHtml: renderTasksByContext(state.tasks_by_context || {}, query, today, pending),
+      dueSoonHtml: renderSimpleList(state.due_soon || [], today, query, pending),
+      waitingHtml: renderSimpleList(state.waiting || [], today, query, pending),
       projectsHtml: renderProjects(state.active_projects || []),
       somedayHtml: renderProjects(state.someday_projects || []),
-      needsTriageHtml: renderNeedsTriage(state, today),
-      meetingsHtml: renderMeetings(state.meetings || []),
+      needsTriageHtml: renderNeedsTriage(state, today, pending),
+      meetingsHtml: renderMeetings(state.meetings || [], state.vault_name),
     };
   }
 
   var api = {
     escapeHtml: escapeHtml, isOverdue: isOverdue, filterTasks: filterTasks, render: render,
+    taskKey: taskKey, obsidianUrl: obsidianUrl,
     tasksForProject: tasksForProject, taskDetailHtml: taskDetailHtml, projectDetailHtml: projectDetailHtml,
     renderNeedsTriage: renderNeedsTriage, renderMeetings: renderMeetings,
   };

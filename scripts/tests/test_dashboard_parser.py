@@ -47,6 +47,35 @@ def test_iter_tasks_with_location_drops_wikilink_from_text(tmp_path):
     waiting_task = next(t for t in tasks if "Logo files" in t["text"])
     assert waiting_task["text"] == "Logo files"
 
+def test_iter_tasks_with_location_keeps_linked_names_as_links(tmp_path):
+    _mk_vault(tmp_path)
+    tasks = list(P.iter_tasks_with_location(tmp_path))
+    waiting_task = next(t for t in tasks if "Logo files" in t["text"])
+    assert waiting_task["links"] == ["Design Agency"]
+
+def test_iter_tasks_with_location_omits_the_notes_own_backlink(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "Meetings").mkdir()
+    (tmp_path / "Meetings" / "2026-09-10 Sync.md").write_text(
+        "---\ntype: meeting\ndate: 2026-09-10\n---\n"
+        "# Sync\n\n## Action items\n- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]] [[Sam Rivera]]\n")
+    tasks = list(P.iter_tasks_with_location(tmp_path))
+    vendor = next(t for t in tasks if "Email the vendor" in t["text"])
+    assert vendor["links"] == ["Sam Rivera"]
+
+def test_iter_tasks_with_location_shows_a_links_alias(tmp_path):
+    (tmp_path / "00 Inbox").mkdir()
+    (tmp_path / "00 Inbox" / "a.md").write_text("- [ ] Ask about figures #agenda [[Sam Rivera|Sam]]\n")
+    task = next(P.iter_tasks_with_location(tmp_path))
+    assert task["links"] == ["Sam"]
+
+def test_collect_state_threads_links_and_vault_name(tmp_path):
+    _mk_vault(tmp_path)
+    state = P.collect_state(tmp_path)
+    assert state["waiting"][0]["links"] == ["Design Agency"]
+    assert state["tasks_by_context"]["#computer"][0]["links"] == []
+    assert state["vault_name"] == tmp_path.name
+
 def test_collect_state_counts_and_groups(tmp_path):
     _mk_vault(tmp_path)
     state = P.collect_state(tmp_path)
