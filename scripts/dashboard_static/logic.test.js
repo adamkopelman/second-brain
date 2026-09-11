@@ -541,3 +541,18 @@ test("the Week page has no Overdue column when nothing is overdue, and counts th
   assert.doesNotMatch(out.weekHtml, />Overdue</);
   assert.deepEqual(out.tabs.week, { count: 1, alert: false });
 });
+
+test("currentEvent picks the timed meeting under way or starting within 10 minutes", () => {
+  assert.equal(L.currentEvent(CAL, "2026-09-11T09:25").subject, "סנכרון שבועי");
+  assert.equal(L.currentEvent(CAL, "2026-09-11T09:45").subject, "סנכרון שבועי");
+  assert.equal(L.currentEvent(CAL, "2026-09-11T10:00"), null); // over; the all-day Holiday never counts
+  assert.equal(L.currentEvent(CAL, "2026-09-11T13:55").subject, "Planning");
+  assert.equal(L.currentEvent({ status: "off", events: [] }, "2026-09-11T09:30"), null);
+});
+
+test("recordingUrl encodes a Hebrew title and attendees for the upload", () => {
+  assert.equal(L.recordingUrl({ started: "2026-09-11T14:00:05", title: "", attendees: "" }),
+    "/api/record-meeting?started=2026-09-11T14%3A00%3A05");
+  assert.equal(L.recordingUrl({ started: "2026-09-11T14:00:05", title: "סנכרון", attendees: "Dana; Omer" }),
+    "/api/record-meeting?started=2026-09-11T14%3A00%3A05&title=%D7%A1%D7%A0%D7%9B%D7%A8%D7%95%D7%9F&attendees=Dana%3B%20Omer");
+});

@@ -20,6 +20,7 @@ STATIC_FILES = {
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
     "/logic.js": ("logic.js", "application/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/recorder.js": ("recorder.js", "application/javascript; charset=utf-8"),
 }
 
 
