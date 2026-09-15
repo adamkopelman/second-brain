@@ -33,18 +33,24 @@
   }
 
   *{box-sizing:border-box}
-  html,body{height:100%}
   body{
     margin:0; background:var(--stage-bg); color:var(--ink);
     font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    -webkit-font-smoothing:antialiased; overflow:hidden;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+    padding:16px 16px 0;
   }
 
-  /* ---- Deck scaffolding ---- */
-  #deck{position:fixed; inset:0; display:grid; place-items:center;}
+  /* ---- Deck scaffolding ----
+     #deck is the 16:9 frame that occupies real layout space (so the page has a
+     genuine height); #stage is the 1280x720 canvas scaled into it from top-left. */
+  #deck{
+    position:relative; margin:0 auto;
+    width:min(100%, calc((100vh - 120px) * 16 / 9));
+    aspect-ratio:16 / 9;
+  }
   #stage{
-    position:relative; width:1280px; height:720px;
-    transform-origin:center center;
+    position:absolute; top:0; left:0; width:1280px; height:720px;
+    transform-origin:top left;
     background:var(--paper);
     box-shadow:var(--shadow);
     overflow:hidden;
@@ -140,8 +146,8 @@
   .flow .arr{flex:none; width:56px; display:grid; place-items:center; color:var(--faint); font-size:26px}
 
   /* footer chrome */
-  #chrome{position:fixed; left:0; right:0; bottom:0; display:flex; align-items:center; gap:16px;
-          padding:14px 22px calc(14px + env(safe-area-inset-bottom,0px)); z-index:10;
+  #chrome{display:flex; align-items:center; gap:16px; max-width:1280px; margin:0 auto;
+          padding:14px 4px calc(14px + env(safe-area-inset-bottom,0px));
           font-family:"IBM Plex Mono",monospace; font-size:13px; color:#9aa3ad;}
   #progress{position:fixed; left:0; top:0; height:3px; background:var(--accent); z-index:20; transition:width .28s ease}
   #chrome .dots{display:flex; gap:7px; flex:1; flex-wrap:wrap}
@@ -157,7 +163,43 @@
   .hint{position:fixed; top:calc(12px + env(safe-area-inset-top,0px)); right:16px; z-index:10;
         font-family:"IBM Plex Mono",monospace; font-size:12px; color:#9aa3ad; opacity:.8}
 
-  @media (max-width:520px){ .hint{display:none} #chrome .dots{display:none} }
+  /* ---- Phone: reflow the slide instead of scaling it down ---- */
+  @media (max-width:760px){
+    body{padding:8px 0 0}
+    .hint{display:none}
+    #deck{width:100%; aspect-ratio:auto;}
+    #stage{position:static; width:100%; height:auto; transform:none !important; border-radius:12px;}
+    .slide{position:static; inset:auto; padding:26px 18px 30px;}
+    .slide-head{margin-bottom:20px}
+    h1, #s-title h1{font-size:clamp(30px,8.5vw,42px)}
+    h2{font-size:clamp(23px,6.2vw,30px)}
+    .eyebrow{font-size:12px; letter-spacing:.14em}
+    .eyebrow::before{width:18px}
+    .lead{font-size:17px; line-height:1.45}
+    ul.clean{gap:12px}
+    ul.clean li{font-size:16px; line-height:1.4; gap:10px}
+    ul.clean li .b{font-size:14px}
+    .split{grid-template-columns:1fr !important; gap:18px; align-items:start}
+    .grid.cols-2, .grid.cols-3{grid-template-columns:1fr}
+    .grid[style*="repeat(5"]{grid-template-columns:1fr !important}
+    .card{padding:16px 18px; border-radius:12px}
+    .card h3{font-size:18px}
+    .card h3[style]{font-size:22px !important}
+    .card p{font-size:15px; line-height:1.4}
+    .card .num{font-size:24px}
+    .callout{font-size:15px; padding:14px 16px; margin-top:18px !important}
+    .term .bar{padding:9px 12px}
+    .term .body{padding:14px; font-size:12px; line-height:1.55; overflow-x:auto}
+    .flow{flex-direction:column; gap:10px}
+    .flow .arr{width:auto; height:22px; font-size:20px; transform:rotate(90deg)}
+    #s-title{gap:18px}
+    .synapse{width:190px; height:190px; right:-24px; top:-24px; opacity:.3}
+    .title-meta{gap:8px}
+    .chip{font-size:12px; padding:6px 12px}
+    #chrome{padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px)); gap:10px}
+    #chrome .dots{display:none}
+    #chrome .brand{flex:1}
+  }
 </style>
 
 <div id="progress"></div>
@@ -621,15 +663,16 @@
     else { (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document); }
   }
 
-  // scale the 1280x720 stage to fit the viewport
+  // Wide screens: scale the 1280x720 canvas into the #deck frame.
+  // Phones (<=760px): the slides reflow, so no scaling is applied.
+  var deck = document.getElementById('deck');
+  function isPhone(){ return window.matchMedia('(max-width:760px)').matches; }
   function fit(){
-    var pad = window.innerWidth < 640 ? 8 : 24;
-    var availW = window.innerWidth - pad*2;
-    var availH = window.innerHeight - 58 - pad;  // leave room for chrome
-    var s = Math.min(availW/1280, availH/720);
-    stage.style.transform = 'scale('+s+')';
+    if(isPhone()){ stage.style.transform = ''; return; }
+    stage.style.transform = 'scale('+(deck.clientWidth/1280)+')';
   }
   window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', fit);
 
   // deep link via hash
   var m = (location.hash||'').match(/^#s(\d+)$/);
