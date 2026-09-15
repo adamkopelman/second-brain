@@ -51,6 +51,10 @@ class FakeEngine:
         return self._duration
 
     def transcribe(self, path, language=None, on_progress=None) -> TranscriptResult:
+        # Same precondition as the real engine: a double that accepts calls the real thing would
+        # reject lets a caller that forgets load() pass every test and fail in production.
+        if not self.loaded:
+            raise RuntimeError("engine.load() has not been called")
         self.calls.append((Path(path), language))
         if self.fail_with:
             raise RuntimeError(self.fail_with)
