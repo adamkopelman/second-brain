@@ -1,0 +1,640 @@
+<title>The AI Chief of Staff</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  :root{
+    --paper:#f4f1ea; --ink:#1b1f24; --muted:#5b6570; --faint:#8a929b;
+    --line:#ddd7cb; --surface:#fffdf8; --surface-2:#efeadf;
+    --accent:#0f766e; --accent-ink:#0b544e; --accent-soft:#dcece8;
+    --signal:#b45309; --signal-soft:#f2e3cd;
+    --shadow:0 1px 2px rgba(27,31,36,.06), 0 12px 34px -18px rgba(27,31,36,.35);
+    --stage-bg:#e7e2d6;
+    color-scheme:light;
+  }
+  :root:not([data-theme="light"]){ @media (prefers-color-scheme: dark){
+    --paper:#14171c; --ink:#ecebe4; --muted:#9aa3ad; --faint:#6c757f;
+    --line:#2a3038; --surface:#1c2128; --surface-2:#232932;
+    --accent:#2dd4bf; --accent-ink:#8fe8dc; --accent-soft:#0f2f2c;
+    --signal:#f0a94f; --signal-soft:#382b18;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 16px 40px -20px rgba(0,0,0,.7);
+    --stage-bg:#0c0e12;
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --paper:#14171c; --ink:#ecebe4; --muted:#9aa3ad; --faint:#6c757f;
+    --line:#2a3038; --surface:#1c2128; --surface-2:#232932;
+    --accent:#2dd4bf; --accent-ink:#8fe8dc; --accent-soft:#0f2f2c;
+    --signal:#f0a94f; --signal-soft:#382b18;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 16px 40px -20px rgba(0,0,0,.7);
+    --stage-bg:#0c0e12;
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--stage-bg); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+
+  /* ---- Deck scaffolding ---- */
+  #deck{position:fixed; inset:0; display:grid; place-items:center;}
+  #stage{
+    position:relative; width:1280px; height:720px;
+    transform-origin:center center;
+    background:var(--paper);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+  .slide{
+    position:absolute; inset:0; padding:66px 84px;
+    display:none; flex-direction:column;
+    opacity:0; transition:opacity .28s ease;
+  }
+  .slide.active{display:flex; opacity:1;}
+  @media (prefers-reduced-motion: reduce){ .slide{transition:none} }
+
+  /* ---- Shared type ---- */
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace; font-size:15px; font-weight:600;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--accent);
+    display:flex; align-items:center; gap:12px;
+  }
+  .eyebrow::before{content:""; width:26px; height:2px; background:var(--accent); display:inline-block;}
+  h1{font-family:"Fraunces",Georgia,serif; font-weight:600; font-size:76px; line-height:1.02;
+     letter-spacing:-.015em; margin:0; text-wrap:balance; color:var(--ink);}
+  h2{font-family:"Fraunces",Georgia,serif; font-weight:600; font-size:52px; line-height:1.04;
+     letter-spacing:-.01em; margin:0; text-wrap:balance;}
+  .lead{font-size:24px; line-height:1.5; color:var(--muted); max-width:60ch; margin:0;}
+  p{margin:0}
+  b,strong{font-weight:600; color:var(--ink)}
+  .slide-head{margin-bottom:30px}
+  .slide-head h2{margin-top:14px}
+
+  /* ---- Bits ---- */
+  .tag{font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.86em;
+       padding:2px 9px; border-radius:999px; white-space:nowrap; display:inline-block;}
+  .tag.ctx{color:var(--accent-ink); background:var(--accent-soft);}
+  .tag.act{color:var(--signal); background:var(--signal-soft);}
+  .cmd{font-family:"IBM Plex Mono",monospace; font-weight:600; color:var(--accent-ink);
+       background:var(--accent-soft); padding:2px 10px; border-radius:7px; white-space:nowrap;}
+  :root[data-theme="dark"] .cmd, :root:not([data-theme="light"]) .cmd{color:var(--accent-ink)}
+
+  .grid{display:grid; gap:18px}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .fill{flex:1; min-height:0}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:16px;
+        padding:24px 26px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:8px;}
+  .card .k{font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.14em;
+           text-transform:uppercase; color:var(--faint); font-weight:600;}
+  .card h3{margin:0; font-size:23px; font-weight:600; letter-spacing:-.01em;}
+  .card p{font-size:17.5px; line-height:1.48; color:var(--muted);}
+  .card .num{font-family:"Fraunces",serif; font-size:30px; font-weight:600; color:var(--accent);
+             line-height:1;}
+
+  ul.clean{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:16px}
+  ul.clean li{font-size:21px; line-height:1.45; color:var(--ink); display:flex; gap:14px; align-items:flex-start}
+  ul.clean li .b{color:var(--accent); font-weight:700; flex:none; font-family:"IBM Plex Mono",monospace;
+                 font-size:17px; margin-top:3px}
+  ul.clean li span.t{color:var(--muted)}
+
+  .split{display:grid; grid-template-columns:1fr 1fr; gap:34px; flex:1; min-height:0; align-items:center}
+
+  /* terminal card for demos */
+  .term{background:#12151a; border:1px solid #2a3038; border-radius:14px; overflow:hidden;
+        font-family:"IBM Plex Mono",monospace; box-shadow:var(--shadow); display:flex; flex-direction:column;}
+  .term .bar{display:flex; gap:8px; padding:12px 16px; background:#1a1e25; border-bottom:1px solid #2a3038}
+  .term .bar i{width:11px; height:11px; border-radius:50%; display:block}
+  .term .bar i:nth-child(1){background:#e5645a} .term .bar i:nth-child(2){background:#e6b34d} .term .bar i:nth-child(3){background:#5cb463}
+  .term .bar .ttl{margin-left:10px; color:#78828d; font-size:13px; align-self:center}
+  .term .body{padding:20px 22px; font-size:16.5px; line-height:1.62; color:#c9d1d9; flex:1}
+  .term .body .p{color:#5cb463} .term .body .u{color:#e6edf3} .term .body .c{color:#8b949e}
+  .term .body .a{color:#2dd4bf} .term .body .s{color:#f0a94f}
+  .term .body .dim{color:#6c757f}
+
+  .callout{border-left:4px solid var(--signal); background:var(--signal-soft);
+           padding:18px 22px; border-radius:0 12px 12px 0; font-size:19px; line-height:1.5;}
+  .callout b{color:var(--signal)}
+
+  /* ---- Title slide ---- */
+  #s-title{justify-content:center; gap:30px}
+  #s-title h1{font-size:104px}
+  .title-meta{display:flex; gap:14px; flex-wrap:wrap; margin-top:8px}
+  .chip{border:1px solid var(--line); background:var(--surface); border-radius:999px;
+        padding:8px 16px; font-size:15px; color:var(--muted); font-family:"IBM Plex Mono",monospace;}
+  .chip b{color:var(--ink)}
+  .synapse{position:absolute; right:-40px; top:-40px; width:520px; height:520px; opacity:.5; pointer-events:none}
+
+  /* flow diagram */
+  .flow{display:flex; align-items:stretch; gap:0; flex:1}
+  .flow .node{flex:1; background:var(--surface); border:1px solid var(--line); border-radius:14px;
+              padding:20px; display:flex; flex-direction:column; gap:8px; justify-content:center; box-shadow:var(--shadow)}
+  .flow .node .k{font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); font-weight:600}
+  .flow .node h4{margin:0; font-size:20px; font-weight:600}
+  .flow .node p{font-size:15px; color:var(--muted); line-height:1.4}
+  .flow .arr{flex:none; width:56px; display:grid; place-items:center; color:var(--faint); font-size:26px}
+
+  /* footer chrome */
+  #chrome{position:fixed; left:0; right:0; bottom:0; display:flex; align-items:center; gap:16px;
+          padding:14px 22px calc(14px + env(safe-area-inset-bottom,0px)); z-index:10;
+          font-family:"IBM Plex Mono",monospace; font-size:13px; color:#9aa3ad;}
+  #progress{position:fixed; left:0; top:0; height:3px; background:var(--accent); z-index:20; transition:width .28s ease}
+  #chrome .dots{display:flex; gap:7px; flex:1; flex-wrap:wrap}
+  #chrome .dot{width:9px; height:9px; border-radius:50%; background:#8a929b55; border:none; padding:0; cursor:pointer}
+  #chrome .dot.on{background:var(--accent); transform:scale(1.15)}
+  #chrome .nav{display:flex; gap:8px; align-items:center}
+  #chrome button.pg{background:var(--surface); color:var(--ink); border:1px solid var(--line);
+                    border-radius:8px; width:34px; height:34px; cursor:pointer; font-size:16px; line-height:1}
+  #chrome button.pg:hover{border-color:var(--accent); color:var(--accent)}
+  #chrome .count{min-width:64px; text-align:right}
+  #chrome .brand{color:var(--ink); font-weight:600}
+  :focus-visible{outline:3px solid var(--accent); outline-offset:2px; border-radius:4px}
+  .hint{position:fixed; top:calc(12px + env(safe-area-inset-top,0px)); right:16px; z-index:10;
+        font-family:"IBM Plex Mono",monospace; font-size:12px; color:#9aa3ad; opacity:.8}
+
+  @media (max-width:520px){ .hint{display:none} #chrome .dots{display:none} }
+</style>
+
+<div id="progress"></div>
+<div class="hint">← → to move · F fullscreen</div>
+
+<div id="deck">
+  <div id="stage" role="group" aria-label="Slide deck">
+
+    <!-- 1. TITLE -->
+    <section class="slide" id="s-title">
+      <svg class="synapse" viewBox="0 0 200 200" aria-hidden="true">
+        <g fill="none" stroke="var(--accent)" stroke-width="1.1">
+          <circle cx="100" cy="100" r="6" fill="var(--accent)"/>
+          <circle cx="40" cy="55" r="4" fill="var(--signal)"/><line x1="100" y1="100" x2="40" y2="55"/>
+          <circle cx="160" cy="45" r="4" fill="var(--accent)"/><line x1="100" y1="100" x2="160" y2="45"/>
+          <circle cx="150" cy="140" r="4" fill="var(--accent)"/><line x1="100" y1="100" x2="150" y2="140"/>
+          <circle cx="55" cy="150" r="4" fill="var(--signal)"/><line x1="100" y1="100" x2="55" y2="150"/>
+          <circle cx="30" cy="105" r="3" fill="var(--accent)"/><line x1="40" y1="55" x2="30" y2="105"/>
+          <circle cx="175" cy="95" r="3" fill="var(--signal)"/><line x1="160" y1="45" x2="175" y2="95"/>
+          <circle cx="110" cy="175" r="3" fill="var(--accent)"/><line x1="55" y1="150" x2="110" y2="175"/>
+        </g>
+      </svg>
+      <div class="eyebrow">A 30-minute working session</div>
+      <h1>The AI<br>Chief of Staff</h1>
+      <p class="lead">Stop using AI as a search box. Start using it to <b>run the loops a manager runs</b> — capture, clarify, prioritise, remember, review.</p>
+      <div class="title-meta">
+        <span class="chip">Demo: a plain-text <b>GTD second brain</b></span>
+        <span class="chip">Live in <b>Claude Code + Obsidian</b></span>
+        <span class="chip"><b>30 min</b> · talk + demo</span>
+      </div>
+    </section>
+
+    <!-- 2. THE PREMISE -->
+    <section class="slide" id="s-premise">
+      <div class="slide-head">
+        <div class="eyebrow">The premise</div>
+        <h2>You don't have a knowledge problem.<br>You have a keeping-track problem.</h2>
+      </div>
+      <div class="split">
+        <ul class="clean">
+          <li><span class="b">→</span><span class="t">A manager's day is <b>interrupt-driven</b>: hallway asks, Slack pings, "quick" emails, decisions made and half-remembered.</span></li>
+          <li><span class="b">→</span><span class="t">The work isn't hard to <i>do</i> — it's hard to <b>hold in your head</b> without dropping something.</span></li>
+          <li><span class="b">→</span><span class="t">Every dropped ball costs trust: the thing you said you'd send, the person you were waiting on, the follow-up after the 1:1.</span></li>
+        </ul>
+        <div class="card" style="background:var(--accent-soft); border-color:var(--accent)">
+          <div class="k">the shift</div>
+          <h3 style="font-family:'Fraunces',serif; font-size:30px; line-height:1.15">AI isn't here to think <i>for</i> you. It's here to <span style="color:var(--accent-ink)">hold the state</span> so you can.</h3>
+          <p>The rest of this session is one working system that does exactly that — and the six other plays you can copy from it.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. CHATBOT VS OPERATOR -->
+    <section class="slide" id="s-reframe">
+      <div class="slide-head">
+        <div class="eyebrow">Reframe</div>
+        <h2>Chatbot &nbsp;→&nbsp; operator you delegate to</h2>
+      </div>
+      <div class="grid cols-2 fill" style="align-content:center">
+        <div class="card">
+          <div class="k">Using AI as a chatbot</div>
+          <ul class="clean" style="gap:11px; margin-top:6px">
+            <li><span class="b" style="color:var(--faint)">·</span><span class="t">One question, one answer, then gone</span></li>
+            <li><span class="b" style="color:var(--faint)">·</span><span class="t">Remembers nothing tomorrow</span></li>
+            <li><span class="b" style="color:var(--faint)">·</span><span class="t">You copy-paste the output somewhere</span></li>
+            <li><span class="b" style="color:var(--faint)">·</span><span class="t">Answers live in a chat log you'll never find</span></li>
+          </ul>
+        </div>
+        <div class="card" style="border-color:var(--accent)">
+          <div class="k" style="color:var(--accent)">Using AI as an operator</div>
+          <ul class="clean" style="gap:11px; margin-top:6px">
+            <li><span class="b">✓</span><span class="t">Runs a <b>named routine</b> on command (a "skill")</span></li>
+            <li><span class="b">✓</span><span class="t">Reads &amp; writes a store <b>you own</b></span></li>
+            <li><span class="b">✓</span><span class="t">Files the result where it belongs</span></li>
+            <li><span class="b">✓</span><span class="t">Context <b>compounds</b> — every pass builds on the last</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:22px">Today's demo is all operator. You'll see commands like <span class="cmd">/gtd-capture</span> and <span class="cmd">/gtd-weekly-review</span> — small verbs you hand off.</div>
+    </section>
+
+    <!-- 4. THE 5 JOBS -->
+    <section class="slide" id="s-jobs">
+      <div class="slide-head">
+        <div class="eyebrow">The five jobs you can hand off</div>
+        <h2>The management loop, delegated</h2>
+      </div>
+      <div class="grid fill" style="grid-template-columns:repeat(5,1fr); align-content:center">
+        <div class="card"><div class="num">01</div><div class="k">Capture</div><h3>Get it out of your head</h3><p>Anything, in two seconds, no filing.</p></div>
+        <div class="card"><div class="num">02</div><div class="k">Clarify</div><h3>What is this?</h3><p>Turn noise into a next action or a project.</p></div>
+        <div class="card"><div class="num">03</div><div class="k">Prioritise</div><h3>What now?</h3><p>Filter by context, time and energy.</p></div>
+        <div class="card"><div class="num">04</div><div class="k">Remember</div><h3>Hold the state</h3><p>People, meetings, who you're waiting on.</p></div>
+        <div class="card"><div class="num">05</div><div class="k">Review</div><h3>Stay honest</h3><p>The weekly pass that keeps it trustworthy.</p></div>
+      </div>
+      <div class="callout" style="margin-top:22px">This is <b>GTD</b> — Getting Things Done. AI doesn't replace the method; it removes the friction that makes people quit it.</div>
+    </section>
+
+    <!-- 5. THE DEMO SYSTEM -->
+    <section class="slide" id="s-system">
+      <div class="slide-head">
+        <div class="eyebrow">The demo system</div>
+        <h2>A "second brain" made of plain text</h2>
+      </div>
+      <div class="split">
+        <ul class="clean">
+          <li><span class="b">▸</span><span class="t">An <b>Obsidian vault</b> — folders of markdown files. That's the whole database.</span></li>
+          <li><span class="b">▸</span><span class="t">Organised <b>PARA</b>-style: <span class="tag ctx">Inbox</span> <span class="tag ctx">Projects</span> <span class="tag ctx">Areas</span> <span class="tag ctx">Resources</span> <span class="tag ctx">Archive</span>, plus People &amp; Meetings.</span></li>
+          <li><span class="b">▸</span><span class="t">State lives in <b>tags</b>, not apps: <span class="tag act">#next</span> <span class="tag act">#waiting</span> and contexts like <span class="tag ctx">#computer</span> <span class="tag ctx">#agenda</span>.</span></li>
+          <li><span class="b">▸</span><span class="t">AI operates it through <b>skills</b>; you read it in Obsidian, a browser dashboard, or your phone.</span></li>
+        </ul>
+        <div class="term">
+          <div class="bar"><i></i><i></i><i></i><span class="ttl">second-brain/</span></div>
+          <div class="body">
+<span class="dim">second-brain/</span><br>
+<span class="a">├─ 00 Inbox/</span>       <span class="c"># unprocessed capture</span><br>
+<span class="a">├─ 10 Projects/</span>    <span class="c"># outcomes &gt; 1 action</span><br>
+<span class="a">├─ 20 Areas/</span>       <span class="c"># ongoing duties</span><br>
+<span class="a">├─ 30 Resources/</span>   <span class="c"># reference</span><br>
+<span class="a">├─ People/</span>         <span class="c"># one note per person</span><br>
+<span class="a">├─ Meetings/</span>       <span class="c"># notes + action items</span><br>
+<span class="dim">└─ Dashboard.md</span>    <span class="c"># live KPIs + cards</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. MENTAL MODEL -->
+    <section class="slide" id="s-model">
+      <div class="slide-head">
+        <div class="eyebrow">How it actually works</div>
+        <h2>You talk. The operator files.</h2>
+      </div>
+      <div class="flow">
+        <div class="node"><div class="k">You</div><h4>Say it plainly</h4><p>"Remind me to send Sam the Q3 figures."</p></div>
+        <div class="arr">→</div>
+        <div class="node"><div class="k">Skill</div><h4>Runs the routine</h4><p>A named recipe: <span style="font-family:'IBM Plex Mono';font-size:13px">/gtd-capture</span></p></div>
+        <div class="arr">→</div>
+        <div class="node"><div class="k">Vault</div><h4>Writes markdown</h4><p>A checkbox with tags + a due date, in the right file.</p></div>
+        <div class="arr">→</div>
+        <div class="node"><div class="k">You</div><h4>See it anywhere</h4><p>Dashboard, Obsidian, or phone.</p></div>
+      </div>
+      <div class="grid cols-3" style="margin-top:24px">
+        <div class="card"><div class="k">Plain text</div><p style="font-size:16px">No lock-in. It's your files — readable in 20 years, gitable, greppable.</p></div>
+        <div class="card"><div class="k">Skills = MCP</div><p style="font-size:16px">Skills are the verbs; MCP connects real tools (Outlook, Drive, calendar).</p></div>
+        <div class="card"><div class="k">Human in the loop</div><p style="font-size:16px">AI proposes the filing; you glance and confirm. Nothing happens in the dark.</p></div>
+      </div>
+    </section>
+
+    <!-- 7. DEMO 1 CAPTURE -->
+    <section class="slide" id="s-demo1">
+      <div class="slide-head">
+        <div class="eyebrow">Demo 1 · Capture</div>
+        <h2>The two-second inbox</h2>
+      </div>
+      <div class="split">
+        <div>
+          <p class="lead" style="margin-bottom:20px">The whole point: <b>never lose a thought to "I'll remember that."</b> No app-switching, no deciding where it goes. Just say it.</p>
+          <ul class="clean" style="gap:12px">
+            <li><span class="b">1</span><span class="t">Blurt anything — a task, an idea, a link, a name.</span></li>
+            <li><span class="b">2</span><span class="t">It lands in <span class="tag ctx">00 Inbox</span> with a timestamp.</span></li>
+            <li><span class="b">3</span><span class="t">You keep moving. Deciding comes later.</span></li>
+          </ul>
+        </div>
+        <div class="term">
+          <div class="bar"><i></i><i></i><i></i><span class="ttl">claude · capture</span></div>
+          <div class="body">
+<span class="p">you ▸</span> <span class="u">/gtd-capture remind me to send Sam</span><br>
+<span class="u">      the Q3 figures before Friday</span><br><br>
+<span class="a">claude ▸</span> Captured to <span class="s">00 Inbox</span>:<br>
+<span class="dim">  - [ ]</span> Send Sam the Q3 figures<br>
+<span class="dim">    </span><span class="s">#next</span> <span class="a">#agenda</span> [[Sam Rivera]]<br>
+<span class="dim">    </span>[due:: 2026-09-18]<br><br>
+<span class="c"># inbox: 1 item · nothing else to decide now</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. DEMO 2 CLARIFY -->
+    <section class="slide" id="s-demo2">
+      <div class="slide-head">
+        <div class="eyebrow">Demo 2 · Clarify</div>
+        <h2>Empty the inbox with a decision tree</h2>
+      </div>
+      <div class="split">
+        <div class="term">
+          <div class="bar"><i></i><i></i><i></i><span class="ttl">claude · process-inbox</span></div>
+          <div class="body">
+<span class="p">you ▸</span> <span class="u">/gtd-process-inbox</span><br><br>
+<span class="a">claude ▸</span> 3 items. Item 1 of 3:<br>
+<span class="dim">  “Website feels slow lately”</span><br><br>
+<span class="c"># Is it actionable?  yes</span><br>
+<span class="c"># One step or many?  many → project</span><br><br>
+<span class="a">claude ▸</span> Filing as project <span class="s">Speed up the site</span><br>
+<span class="dim">  first #next:</span> Profile the homepage<br>
+<span class="dim">  </span><span class="a">#computer</span> [[Speed up the site]]<br>
+<span class="dim">  next ▸</span> item 2 of 3…
+          </div>
+        </div>
+        <div>
+          <p class="lead" style="margin-bottom:18px">Clarifying is the step people skip. The operator walks the <b>GTD decision tree</b> for you and files each item.</p>
+          <ul class="clean" style="gap:11px">
+            <li><span class="b">?</span><span class="t"><b>Actionable?</b> No → trash, someday, or reference.</span></li>
+            <li><span class="b">?</span><span class="t"><b>One step?</b> Yes → a next action with a context.</span></li>
+            <li><span class="b">?</span><span class="t"><b>Many steps?</b> → a project with a first action.</span></li>
+            <li><span class="b">?</span><span class="t"><b>Someone else's?</b> → <span class="tag act">#waiting</span> on a person.</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. DEMO 3 ENGAGE -->
+    <section class="slide" id="s-demo3">
+      <div class="slide-head">
+        <div class="eyebrow">Demo 3 · Prioritise &amp; engage</div>
+        <h2>"What should I actually do right now?"</h2>
+      </div>
+      <div class="split">
+        <div>
+          <p class="lead" style="margin-bottom:18px">The list you need isn't <i>everything</i> — it's what fits <b>this moment</b>. Filter by where you are, how long you've got, and how much brain you have.</p>
+          <ul class="clean" style="gap:12px">
+            <li><span class="b">▸</span><span class="t"><b>Context</b> — at your desk? <span class="tag ctx">#computer</span> · on the move? <span class="tag ctx">#phone</span></span></li>
+            <li><span class="b">▸</span><span class="t"><b>Time</b> — "I have 15 minutes."</span></li>
+            <li><span class="b">▸</span><span class="t"><b>Energy</b> — "I'm fried, give me easy wins."</span></li>
+          </ul>
+        </div>
+        <div class="term">
+          <div class="bar"><i></i><i></i><i></i><span class="ttl">claude · next-actions</span></div>
+          <div class="body">
+<span class="p">you ▸</span> <span class="u">what can I do at my computer in 15 min?</span><br><br>
+<span class="a">claude ▸</span> 4 <span class="s">#next</span> actions fit:<br>
+<span class="dim">  □</span> Reply to the board email <span class="dim">~10m</span><br>
+<span class="dim">  □</span> Profile the homepage <span class="dim">~15m</span><br>
+<span class="dim">  □</span> Approve the design draft <span class="dim">~5m</span><br>
+<span class="dim">  □</span> Book the venue <span class="s">[due today]</span><br><br>
+<span class="c"># hidden: 12 tasks that don't fit right now</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. DEMO 4 MEETINGS -->
+    <section class="slide" id="s-demo4">
+      <div class="slide-head">
+        <div class="eyebrow">Demo 4 · Remember · the manager's killer app</div>
+        <h2>Meeting → notes, decisions, action items</h2>
+      </div>
+      <div class="split">
+        <div class="term">
+          <div class="bar"><i></i><i></i><i></i><span class="ttl">claude · summarize-meetings</span></div>
+          <div class="body">
+<span class="p">you ▸</span> <span class="u">/gtd-summarize-meetings</span><br><br>
+<span class="a">claude ▸</span> <span class="s">Weekly sync — 2026-09-15</span><br>
+<span class="a">Decisions</span><br>
+<span class="dim">  •</span> Ship v2 behind a flag first<br>
+<span class="a">Action items</span><br>
+<span class="dim">  - [ ]</span> Adam: write rollout plan <span class="s">#next</span><br>
+<span class="dim">  - [ ]</span> Waiting on Priya: legal sign-off<br>
+<span class="dim">    </span><span class="s">#waiting</span> [[Priya]] [since:: 09-15]<br>
+<span class="c"># filed to Meetings/ + People notes updated</span>
+          </div>
+        </div>
+        <div>
+          <p class="lead" style="margin-bottom:18px">This is the play that sells the whole system. A recording (or transcript) becomes <b>structured, filed follow-through</b> — not a doc you never reopen.</p>
+          <ul class="clean" style="gap:11px">
+            <li><span class="b">✓</span><span class="t">Decisions captured, so "what did we agree?" has an answer.</span></li>
+            <li><span class="b">✓</span><span class="t">Action items become real <span class="tag act">#next</span> tasks with owners.</span></li>
+            <li><span class="b">✓</span><span class="t">Things you delegated become <span class="tag act">#waiting</span> — you'll never chase blind again.</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11. DEMO 5 REVIEW -->
+    <section class="slide" id="s-demo5">
+      <div class="slide-head">
+        <div class="eyebrow">Demo 5 · Review &amp; the dashboard</div>
+        <h2>The weekly pass that keeps it honest</h2>
+      </div>
+      <div class="split">
+        <div>
+          <p class="lead" style="margin-bottom:18px">A second brain you don't trust is just another pile. The <b>weekly review</b> is the ritual that keeps trust — and the operator runs the checklist with you.</p>
+          <ul class="clean" style="gap:11px">
+            <li><span class="b">▸</span><span class="t"><span class="cmd">/gtd-status</span> — a 10-second brief the moment you sit down.</span></li>
+            <li><span class="b">▸</span><span class="t"><span class="cmd">/gtd-weekly-review</span> — inbox to zero, stale projects, overdue waits.</span></li>
+            <li><span class="b">▸</span><span class="t"><span class="cmd">/gtd-dashboard</span> — a shareable HTML view for any browser or phone.</span></li>
+          </ul>
+        </div>
+        <div class="term">
+          <div class="bar"><i></i><i></i><i></i><span class="ttl">claude · status</span></div>
+          <div class="body">
+<span class="p">you ▸</span> <span class="u">/gtd-status</span><br><br>
+<span class="a">🧠 Second Brain — brief</span><br>
+<span class="dim">📥 Inbox:</span> 0 items <span class="c">(clear ✓)</span><br>
+<span class="dim">📋 Projects:</span> 4 active<br>
+<span class="dim">⚡ #next ready:</span> 9 actions<br>
+<span class="dim">⏳ Waiting on:</span> 3 people<br>
+<span class="s">⚠ Review due:</span> last one 9 days ago<br>
+<span class="c"># → run /gtd-weekly-review</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12. BEYOND GTD -->
+    <section class="slide" id="s-beyond">
+      <div class="slide-head">
+        <div class="eyebrow">Copy the pattern</div>
+        <h2>Six more plays for managers</h2>
+      </div>
+      <div class="grid cols-3 fill" style="align-content:center">
+        <div class="card"><div class="k">Inbox</div><h3>Email triage</h3><p>Flagged mail → inbox items → next actions. (<span style="font-family:'IBM Plex Mono';font-size:13px">/gtd-outlook</span>, Gmail MCP.)</p></div>
+        <div class="card"><div class="k">People</div><h3>1:1 prep</h3><p>"What's open with Priya?" pulls their note, waits, and last decisions.</p></div>
+        <div class="card"><div class="k">Delegation</div><h3>Waiting-for tracker</h3><p>One list of everything you're owed, with who and since when.</p></div>
+        <div class="card"><div class="k">Memory</div><h3>Decision log</h3><p>Why did we choose X? Searchable, dated, attributed.</p></div>
+        <div class="card"><div class="k">Drafting</div><h3>Reply &amp; brief drafts</h3><p>Draft the update from the project note — you edit, not start blank.</p></div>
+        <div class="card"><div class="k">Focus</div><h3>Priority brief</h3><p>"Given deadlines and energy, what are my top 3 today?"</p></div>
+      </div>
+    </section>
+
+    <!-- 13. WHY IT WORKS -->
+    <section class="slide" id="s-principles">
+      <div class="slide-head">
+        <div class="eyebrow">Why this works when other tools didn't</div>
+        <h2>Four principles worth stealing</h2>
+      </div>
+      <div class="grid cols-2 fill" style="align-content:center">
+        <div class="card"><div class="k">Principle 01</div><h3>You own the data</h3><p>Plain markdown, not a proprietary app. No migration, no lock-in, no "the startup shut down."</p></div>
+        <div class="card"><div class="k">Principle 02</div><h3>Small verbs, not one big brain</h3><p>Named skills you understand and trust, each doing one job — not a black box "assistant".</p></div>
+        <div class="card"><div class="k">Principle 03</div><h3>Human stays in the loop</h3><p>AI drafts the filing; you approve. The system is auditable because you can read every file.</p></div>
+        <div class="card"><div class="k">Principle 04</div><h3>Context compounds</h3><p>Every capture, meeting and review makes the next answer sharper. The value grows with use.</p></div>
+      </div>
+    </section>
+
+    <!-- 14. PITFALLS -->
+    <section class="slide" id="s-pitfalls">
+      <div class="slide-head">
+        <div class="eyebrow">Keep it real</div>
+        <h2>Four ways this goes wrong</h2>
+      </div>
+      <div class="grid cols-2 fill" style="align-content:center">
+        <div class="card" style="border-left:4px solid var(--signal)"><div class="k" style="color:var(--signal)">Pitfall</div><h3>Automating a broken process</h3><p>If your review habit is chaos, AI just makes chaos faster. Fix the loop first, then hand it off.</p></div>
+        <div class="card" style="border-left:4px solid var(--signal)"><div class="k" style="color:var(--signal)">Pitfall</div><h3>Trusting without verifying</h3><p>It can mis-file or invent a due date. Glance at what it wrote — especially before you act on it.</p></div>
+        <div class="card" style="border-left:4px solid var(--signal)"><div class="k" style="color:var(--signal)">Pitfall</div><h3>Feeding it the wrong things</h3><p>Know what goes in a work vault vs. what stays out — secrets, HR specifics, anything you can't own.</p></div>
+        <div class="card" style="border-left:4px solid var(--signal)"><div class="k" style="color:var(--signal)">Pitfall</div><h3>Over-automating</h3><p>The daily habit of capture &amp; review is the point. Don't automate away the thinking you needed to do.</p></div>
+      </div>
+    </section>
+
+    <!-- 15. SET IT UP -->
+    <section class="slide" id="s-setup">
+      <div class="slide-head">
+        <div class="eyebrow">Do it yourself</div>
+        <h2>Stand this up in 15 minutes</h2>
+      </div>
+      <div class="split">
+        <ul class="clean">
+          <li><span class="b">1</span><span class="t">Grab the <b>second-brain template</b> and open the folder as an Obsidian vault.</span></li>
+          <li><span class="b">2</span><span class="t">Run <span class="cmd">/gtd-setup</span> — it scaffolds the folders, templates and dashboard.</span></li>
+          <li><span class="b">3</span><span class="t">Capture for a day. Just <span class="cmd">/gtd-capture</span> everything — don't organise yet.</span></li>
+          <li><span class="b">4</span><span class="t">Tomorrow, <span class="cmd">/gtd-process-inbox</span> to empty it. That's the habit.</span></li>
+          <li><span class="b">5</span><span class="t">Friday, <span class="cmd">/gtd-weekly-review</span>. Now it's a system, not a demo.</span></li>
+        </ul>
+        <div class="card" style="background:var(--accent-soft); border-color:var(--accent); justify-content:center">
+          <div class="k">what you need</div>
+          <ul class="clean" style="gap:10px; margin-top:4px">
+            <li><span class="b">·</span><span class="t">Claude Code (or opencode / Claudian in Obsidian)</span></li>
+            <li><span class="b">·</span><span class="t">Obsidian + the Dataview plugin (free)</span></li>
+            <li><span class="b">·</span><span class="t">Optional: Outlook / Gmail / Drive via MCP</span></li>
+          </ul>
+          <p style="margin-top:8px; font-size:15px">Everything in this deck runs on that stack. No new SaaS bill.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 16. RECAP -->
+    <section class="slide" id="s-recap">
+      <div class="slide-head">
+        <div class="eyebrow">Take one thing away</div>
+        <h2>Pick one loop. Run it for a week.</h2>
+      </div>
+      <div class="split">
+        <div>
+          <p class="lead" style="margin-bottom:22px">You don't need the whole system on day one. You need <b>one loop you actually close</b>. The rest follows.</p>
+          <ul class="clean" style="gap:14px">
+            <li><span class="b">→</span><span class="t"><b>Capture</b> everything for one week. Notice what you <i>used</i> to drop.</span></li>
+            <li><span class="b">→</span><span class="t">Or start at meetings — <b>summarise every one</b> and track the follow-ups.</span></li>
+            <li><span class="b">→</span><span class="t">Then add the <b>weekly review</b>. That's when it becomes a second brain.</span></li>
+          </ul>
+        </div>
+        <div class="card" style="justify-content:center; background:var(--surface-2)">
+          <div class="k">the one-liner</div>
+          <h3 style="font-family:'Fraunces',serif; font-size:34px; line-height:1.15; font-weight:600">Don't ask AI to be smart.<br>Ask it to <span style="color:var(--accent)">hold the state</span> — so you can be.</h3>
+          <p style="margin-top:10px">Questions? Let's run any of these live on your own inbox.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<nav id="chrome" aria-label="Slide navigation">
+  <span class="brand">AI Chief of Staff</span>
+  <div class="dots" id="dots"></div>
+  <div class="nav">
+    <button class="pg" id="prev" aria-label="Previous slide">‹</button>
+    <button class="pg" id="next" aria-label="Next slide">›</button>
+    <span class="count" id="count">1 / 16</span>
+  </div>
+</nav>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var n = slides.length, i = 0;
+  var stage = document.getElementById('stage');
+  var dotsWrap = document.getElementById('dots');
+  var count = document.getElementById('count');
+  var progress = document.getElementById('progress');
+
+  // dots
+  slides.forEach(function(_, idx){
+    var b = document.createElement('button');
+    b.className = 'dot'; b.setAttribute('aria-label','Go to slide '+(idx+1));
+    b.addEventListener('click', function(){ go(idx); });
+    dotsWrap.appendChild(b);
+  });
+  var dots = Array.prototype.slice.call(dotsWrap.children);
+
+  function render(){
+    slides.forEach(function(s,idx){ s.classList.toggle('active', idx===i); });
+    dots.forEach(function(d,idx){ d.classList.toggle('on', idx===i); });
+    count.textContent = (i+1)+' / '+n;
+    progress.style.width = ((i)/(n-1)*100)+'%';
+    try{ location.hash = 's'+(i+1); }catch(e){}
+  }
+  function go(x){ i = Math.max(0, Math.min(n-1, x)); render(); }
+  function next(){ go(i+1); }
+  function prev(){ go(i-1); }
+
+  document.getElementById('next').addEventListener('click', next);
+  document.getElementById('prev').addEventListener('click', prev);
+
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); next(); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); prev(); }
+    else if(e.key==='Home'){ go(0); }
+    else if(e.key==='End'){ go(n-1); }
+    else if(e.key==='f'||e.key==='F'){ toggleFull(); }
+  });
+
+  // tap left/right thirds on the stage (touch / click)
+  stage.addEventListener('click', function(e){
+    if(e.target.closest('a,button')) return;
+    var r = stage.getBoundingClientRect();
+    if((e.clientX - r.left) < r.width*0.32) prev(); else next();
+  });
+
+  function toggleFull(){
+    var el = document.documentElement;
+    if(!document.fullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el); }
+    else { (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document); }
+  }
+
+  // scale the 1280x720 stage to fit the viewport
+  function fit(){
+    var pad = window.innerWidth < 640 ? 8 : 24;
+    var availW = window.innerWidth - pad*2;
+    var availH = window.innerHeight - 58 - pad;  // leave room for chrome
+    var s = Math.min(availW/1280, availH/720);
+    stage.style.transform = 'scale('+s+')';
+  }
+  window.addEventListener('resize', fit);
+
+  // deep link via hash
+  var m = (location.hash||'').match(/^#s(\d+)$/);
+  if(m){ i = Math.max(0, Math.min(n-1, parseInt(m[1],10)-1)); }
+
+  fit(); render();
+})();
+</script>
