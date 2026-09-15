@@ -543,7 +543,8 @@ git commit -m "feat(whisper): SQLite job store with FIFO claim, throttled progre
 - Produces: `TranscriptResult(text: str, detected_language: str | None, duration_seconds: float | None)`;
   `probe_wav_duration(path) -> float | None`;
   `FakeEngine(text="hello world", language="en", duration=10.0, steps=4, fail_with=None)` with
-  `.load()`, `.duration(path)`, `.transcribe(path, language=None, on_progress=None) -> TranscriptResult`,
+  `.load()`, `.duration(path)`, `.transcribe(path, language=None, on_progress=None) -> TranscriptResult`
+  (which raises `RuntimeError` if `load()` was never called, exactly as the real engine does),
   `.loaded` bool, `.calls` list of `(path, language)`;
   `FasterWhisperEngine(model_path, compute_type="int8", threads=0, beam_size=1, vad=True)` with the
   same three methods and a `MissingDependency` error for the absent-package case.
@@ -606,14 +607,23 @@ class FakeEngineTest(unittest.TestCase):
 
     def test_records_calls_and_honours_requested_language(self):
         eng = E.FakeEngine()
+        eng.load()
         eng.transcribe(Path("/tmp/y.wav"), language="en", on_progress=None)
         self.assertEqual(eng.calls, [(Path("/tmp/y.wav"), "en")])
 
     def test_fail_with_raises(self):
         eng = E.FakeEngine(fail_with="no speech backend")
+        eng.load()
         with self.assertRaises(RuntimeError) as ctx:
             eng.transcribe(Path("/tmp/z.wav"))
         self.assertIn("no speech backend", str(ctx.exception))
+
+    def test_transcribing_before_load_raises_like_the_real_engine(self):
+        eng = E.FakeEngine()
+        with self.assertRaises(RuntimeError) as ctx:
+            eng.transcribe(Path("/tmp/early.wav"))
+        self.assertIn("load()", str(ctx.exception))
+        self.assertEqual(eng.calls, [])
 
 
 class FasterWhisperEngineTest(unittest.TestCase):
@@ -698,6 +708,10 @@ class FakeEngine:
         return self._duration
 
     def transcribe(self, path, language=None, on_progress=None) -> TranscriptResult:
+        # Same precondition as the real engine: a double that accepts calls the real thing would
+        # reject lets a caller that forgets load() pass every test and fail in production.
+        if not self.loaded:
+            raise RuntimeError("engine.load() has not been called")
         self.calls.append((Path(path), language))
         if self.fail_with:
             raise RuntimeError(self.fail_with)
@@ -1108,6 +1122,15 @@ from app.worker import Worker, unlink_audio  # noqa: E402
 from tests.test_jobstore import Clock  # noqa: E402
 
 
+def loaded_engine(**kwargs):
+    """A FakeEngine that has been load()ed — mirrors production, where __main__ loads the model
+    before the worker thread starts. FakeEngine refuses to transcribe otherwise, just as the real
+    engine does."""
+    engine = FakeEngine(**kwargs)
+    engine.load()
+    return engine
+
+
 class WorkerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1128,7 +1151,7 @@ class WorkerTest(unittest.TestCase):
 
     def test_run_once_transcribes_and_records_progress(self):
         job = self.enqueue("standup")
-        engine = FakeEngine(text="hello there", language="en", duration=12.0, steps=2)
+        engine = loaded_engine(text="hello there", language="en", duration=12.0, steps=2)
         worker = Worker(self.store, engine)
         self.assertEqual(worker.run_once(), job["id"])
         done = self.store.get(job["id"])
@@ -1140,13 +1163,13 @@ class WorkerTest(unittest.TestCase):
 
     def test_requested_language_is_passed_through(self):
         self.enqueue("heb", language="he")
-        engine = FakeEngine()
+        engine = loaded_engine()
         Worker(self.store, engine).run_once()
         self.assertEqual(engine.calls[0][1], "he")
 
     def test_engine_failure_marks_the_job_failed_with_the_message(self):
         job = self.enqueue("bad")
-        worker = Worker(self.store, FakeEngine(fail_with="ct2 blew up"))
+        worker = Worker(self.store, loaded_engine(fail_with="ct2 blew up"))
         self.assertEqual(worker.run_once(), job["id"])
         failed = self.store.get(job["id"])
         self.assertEqual(failed["status"], "failed")
@@ -1155,20 +1178,20 @@ class WorkerTest(unittest.TestCase):
     def test_missing_audio_file_fails_the_job_without_calling_the_engine(self):
         job = self.enqueue("gone")
         Path(self.store.get(job["id"])["audio_path"]).unlink()
-        engine = FakeEngine()
+        engine = loaded_engine()
         Worker(self.store, engine).run_once()
         self.assertEqual(self.store.get(job["id"])["status"], "failed")
         self.assertIn("audio file is missing", self.store.get(job["id"])["error"])
         self.assertEqual(engine.calls, [])
 
     def test_run_once_on_an_empty_queue_returns_none(self):
-        self.assertIsNone(Worker(self.store, FakeEngine()).run_once())
+        self.assertIsNone(Worker(self.store, loaded_engine()).run_once())
 
     def test_run_loop_drains_the_queue_then_stops(self):
         for name in ("a", "b", "c"):
             self.enqueue(name)
         stop = threading.Event()
-        worker = Worker(self.store, FakeEngine(), poll_interval=0.01, stop_event=stop)
+        worker = Worker(self.store, loaded_engine(), poll_interval=0.01, stop_event=stop)
         thread = threading.Thread(target=worker.run)
         thread.start()
         try:
@@ -1185,24 +1208,24 @@ class WorkerTest(unittest.TestCase):
     def test_sweep_retention_deletes_old_rows_and_their_audio(self):
         job = self.enqueue("old")
         audio_path = Path(self.store.get(job["id"])["audio_path"])
-        Worker(self.store, FakeEngine()).run_once()
+        Worker(self.store, loaded_engine()).run_once()
         self.clock.advance(20 * 86400)
-        worker = Worker(self.store, FakeEngine(), retention_days=14)
+        worker = Worker(self.store, loaded_engine(), retention_days=14)
         self.assertEqual(worker.sweep_retention(force=True), 1)
         self.assertIsNone(self.store.get(job["id"]))
         self.assertFalse(audio_path.exists())
 
     def test_sweep_retention_is_rate_limited(self):
         first = self.enqueue("first")
-        Worker(self.store, FakeEngine()).run_once()
+        Worker(self.store, loaded_engine()).run_once()
         self.clock.advance(20 * 86400)
-        worker = Worker(self.store, FakeEngine(), retention_days=14, retention_interval=3600.0,
+        worker = Worker(self.store, loaded_engine(), retention_days=14, retention_interval=3600.0,
                         clock=lambda: 0.0)  # a frozen clock never clears the interval
         self.assertEqual(worker.sweep_retention(), 1)
         self.assertIsNone(self.store.get(first["id"]))
 
         second = self.enqueue("second")
-        Worker(self.store, FakeEngine()).run_once()
+        Worker(self.store, loaded_engine()).run_once()
         self.clock.advance(20 * 86400)
         self.assertEqual(worker.sweep_retention(), 0)  # rate-limited: skipped, not swept
         self.assertIsNotNone(self.store.get(second["id"]))
