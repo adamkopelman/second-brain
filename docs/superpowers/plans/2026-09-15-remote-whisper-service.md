@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - **The vault stays dependency-free.** No file under `scripts/`, `.obsidian/`, or `services/remote-whisper/app/` may import a third-party package at module import time. faster-whisper is imported **lazily, inside `FasterWhisperEngine.load()`**, never at module top level. `services/remote-whisper/requirements.txt` is for the image only and must never be installed into the vault.
-- **Tests run with nothing installed.** New service tests use stdlib `unittest` (run: `python3 -m unittest discover -s services/remote-whisper/tests -t .`). Tests under `scripts/tests/` follow the existing pytest style (bare `assert`, `tmp_path` fixture). JS tests use `node --test`.
+- **Tests run with nothing installed.** New service tests use stdlib `unittest` (run: `cd services/remote-whisper && python3 -m unittest discover -s tests -t .`). Tests under `scripts/tests/` follow the existing pytest style (bare `assert`, `tmp_path` fixture). JS tests use `node --test`.
 - **Baseline to preserve:** 92 passing Python tests (1 skipped) and 54 passing JS tests. No task may reduce these numbers.
 - **No authentication anywhere.** Deliberate user decision. Say so in `values.yaml` comments and in `docs/gtd/remote-whisper.md`; never add a token check.
 - **No GPU.** `device="cpu"` is hardcoded in the engine. No CUDA base image, no `nvidia.com/gpu` resources.
@@ -55,7 +55,8 @@
 ### Task 1: Job store
 
 **Files:**
-- Create: `services/remote-whisper/app/__init__.py` (empty), `services/remote-whisper/app/jobstore.py`
+- Create: `services/remote-whisper/app/__init__.py` (empty),
+  `services/remote-whisper/tests/__init__.py` (empty), `services/remote-whisper/app/jobstore.py`
 - Test: `services/remote-whisper/tests/test_jobstore.py`
 
 **Interfaces:**
@@ -267,7 +268,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'app'`
 
 - [ ] **Step 3: Write minimal implementation**
@@ -313,7 +314,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at TEXT,
     finished_at TEXT
 );
-CREATE INDEX IF NOT EXISTS jobs_status_created ON jobs (status, created_at, id);
+CREATE INDEX IF NOT EXISTS jobs_status_created ON jobs (status, created_at, rowid);
 """
 
 
@@ -359,10 +360,14 @@ class JobStore:
         return self.get(job_id)
 
     def claim_next(self) -> dict | None:
-        """Atomically move the oldest queued job to running. FIFO is the database's job, not ours."""
+        """Atomically move the oldest queued job to running. FIFO is the database's job, not ours.
+
+        Ties on created_at (second precision, so two jobs submitted in the same second tie) break on
+        rowid — insertion order — not on the random uuid id, which would make FIFO a coin flip.
+        """
         with self._lock:
             row = self._conn.execute(
-                "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, id LIMIT 1"
+                "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, rowid LIMIT 1"
             ).fetchone()
             if row is None:
                 return None
@@ -459,7 +464,7 @@ class JobStore:
         if status:
             sql += " WHERE status = ?"
             params.append(status)
-        sql += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        sql += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
         params.append(int(limit))
         with self._lock:
             rows = self._conn.execute(sql, params).fetchall()
@@ -489,7 +494,7 @@ class JobStore:
     def _queued_order(self) -> list[str]:
         """Caller must already hold self._lock — this never takes it, so _decorate stays lock-free."""
         rows = self._conn.execute(
-            "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, id"
+            "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, rowid"
         ).fetchall()
         return [r["id"] for r in rows]
 
@@ -514,7 +519,7 @@ the lock, so they never nest it.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: PASS — 16 tests
 
 - [ ] **Step 5: Commit**
@@ -632,7 +637,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest services.remote-whisper.tests.test_engine -v 2>/dev/null || python3 -m unittest discover -s services/remote-whisper/tests -t . -k Engine -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -k Engine -v`
 Expected: FAIL — `ImportError: cannot import name 'engine'`
 
 - [ ] **Step 3: Write minimal implementation**
@@ -758,7 +763,7 @@ class FasterWhisperEngine:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: PASS — Task 1's 16 tests plus 8 engine tests (24 total)
 
 - [ ] **Step 5: Commit**
@@ -894,7 +899,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -k Multipart -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -k Multipart -v`
 Expected: FAIL — `ImportError: cannot import name 'multipart'`
 
 - [ ] **Step 3: Write minimal implementation**
@@ -1058,7 +1063,7 @@ file behind, which is why `_stream_part` unlinks `dest_path` before re-raising.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: PASS — 32 tests total
 
 - [ ] **Step 5: Commit**
@@ -1213,17 +1218,17 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-Note: `from tests.test_jobstore import Clock` requires `services/remote-whisper/tests/__init__.py`.
-Create it (empty) in Step 3 and re-run Task 1's discovery command to confirm nothing broke.
+Note: `from tests.test_jobstore import Clock` relies on `services/remote-whisper/tests/__init__.py`,
+which Task 1 already created — do not create it again.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -k Worker -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -k Worker -v`
 Expected: FAIL — `ImportError: cannot import name 'worker'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `services/remote-whisper/tests/__init__.py` (empty) and `services/remote-whisper/app/worker.py`:
+Create `services/remote-whisper/app/worker.py`:
 
 ```python
 """The transcription worker: one thread, one job at a time, model resident between jobs."""
@@ -1308,14 +1313,14 @@ class Worker:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: PASS — 41 tests total
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /home/user/second-brain
-git add services/remote-whisper/app/worker.py services/remote-whisper/tests/__init__.py services/remote-whisper/tests/test_worker.py
+git add services/remote-whisper/app/worker.py services/remote-whisper/tests/test_worker.py
 git commit -m "feat(whisper): worker thread with per-job failure isolation and retention sweep"
 ```
 
@@ -1617,7 +1622,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -k Server -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -k Server -v`
 Expected: FAIL — `ImportError: cannot import name 'server'`
 
 - [ ] **Step 3: Write minimal implementation**
@@ -1899,7 +1904,7 @@ def serve(handler_cls, host="0.0.0.0", port=8080) -> ThreadingHTTPServer:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: PASS — 62 tests total
 
 - [ ] **Step 5: Commit**
@@ -2023,7 +2028,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -k Config -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -k Config -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'app.__main__'`
 
 - [ ] **Step 3: Write minimal implementation**
@@ -2218,7 +2223,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: PASS — 69 tests total
 
 - [ ] **Step 5: Smoke-test the real process**
@@ -2822,7 +2827,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -k ImageContract -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -k ImageContract -v`
 Expected: FAIL — `FileNotFoundError: .../Dockerfile`
 
 - [ ] **Step 3: Write the requirements file**
@@ -2899,7 +2904,7 @@ tests/
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v`
 Expected: PASS — 76 tests total
 
 - [ ] **Step 6: Verify the runtime stage builds (network permitting)**
@@ -3024,7 +3029,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -k ChartContract -v`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -k ChartContract -v`
 Expected: FAIL — `FileNotFoundError: .../deploy/helm/remote-whisper/Chart.yaml`
 
 - [ ] **Step 3: Write Chart.yaml, .helmignore and values.yaml**
@@ -3560,7 +3565,7 @@ Make it executable: `chmod +x scripts/remote_whisper/lint-chart.sh`.
 
 - [ ] **Step 6: Run both test suites**
 
-Run: `cd /home/user/second-brain && python3 -m unittest discover -s services/remote-whisper/tests -t . -v && bash scripts/remote_whisper/lint-chart.sh`
+Run: `cd /home/user/second-brain/services/remote-whisper && python3 -m unittest discover -s tests -t . -v && bash scripts/remote_whisper/lint-chart.sh`
 Expected: PASS — 84 Python tests; the lint script either prints `OK: chart lints and renders
 correctly across all permutations` or the `SKIP:` line if Helm is absent. If Helm can be installed
 in your environment, install it and get the real `OK` — a skipped chart check has verified nothing.
@@ -4809,7 +4814,7 @@ git commit -m "chore(whisper): commit the air-gap bundle zip for offline import"
 
 ```bash
 cd /home/user/second-brain
-python3 -m unittest discover -s services/remote-whisper/tests -t . -v 2>&1 | tail -3
+(cd services/remote-whisper && python3 -m unittest discover -s tests -t . 2>&1 | tail -3)
 python3 -m pytest scripts/tests/ -q 2>&1 | tail -3
 node --test scripts/dashboard_static/logic.test.js scripts/dashboard_static/recorder.test.js \
   .obsidian/plugins/record-meeting/test/lib.test.js services/remote-whisper/tests/test_logic.js 2>&1 | tail -8
