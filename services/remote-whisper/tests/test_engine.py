@@ -51,14 +51,23 @@ class FakeEngineTest(unittest.TestCase):
 
     def test_records_calls_and_honours_requested_language(self):
         eng = E.FakeEngine()
+        eng.load()
         eng.transcribe(Path("/tmp/y.wav"), language="en", on_progress=None)
         self.assertEqual(eng.calls, [(Path("/tmp/y.wav"), "en")])
 
     def test_fail_with_raises(self):
         eng = E.FakeEngine(fail_with="no speech backend")
+        eng.load()
         with self.assertRaises(RuntimeError) as ctx:
             eng.transcribe(Path("/tmp/z.wav"))
         self.assertIn("no speech backend", str(ctx.exception))
+
+    def test_transcribing_before_load_raises_like_the_real_engine(self):
+        eng = E.FakeEngine()
+        with self.assertRaises(RuntimeError) as ctx:
+            eng.transcribe(Path("/tmp/early.wav"))
+        self.assertIn("load()", str(ctx.exception))
+        self.assertEqual(eng.calls, [])
 
 
 class FasterWhisperEngineTest(unittest.TestCase):
