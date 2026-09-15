@@ -1,50 +1,60 @@
-# AI as a Management Tool — one-page takeaway
+# The AI Chief of Staff — one page to keep
 
-*Companion to "The AI Chief of Staff." Keep this; run one loop this week.*
+*From the new team leaders' day. Everything else today was about your people — this is how you get the time.*
 
-## The idea in one line
-Don't ask AI to be smart. Ask it to **hold the state** — so you can be. Use it as an *operator you delegate to*, not a chatbot you interrogate.
+## The delegation line
 
-## The five jobs you can hand off (the GTD loop)
-1. **Capture** — get anything out of your head in 2 seconds, no filing.
-2. **Clarify** — turn each item into a next action or a project.
-3. **Prioritise** — surface what fits your context, time, and energy.
-4. **Remember** — hold people, meetings, decisions, and who you're waiting on.
-5. **Review** — a weekly pass that keeps the whole thing trustworthy.
+| Hand it over | Keep it |
+|---|---|
+| Reading and sorting | The decision |
+| Remembering and retrieving | The feedback |
+| Turning notes into structure | The hard conversation |
+| First drafts of anything | Any promise made to another person |
+| Counting, comparing, spotting trends | Anything you'd be embarrassed to say *"the AI did that"* about |
 
-## The commands (this second-brain vault)
-| Job | Command |
-|-----|---------|
-| Capture | `/gtd-capture <thought>` |
-| Clarify | `/gtd-process-inbox` |
-| Prioritise | `/gtd-next-actions` |
-| Remember | `/gtd-summarize-meetings` |
-| Review | `/gtd-status` · `/gtd-weekly-review` · `/gtd-dashboard` |
+**The right-hand column is the actual job.** That's the point.
 
-## Tags that hold the state
-- **Status:** `#next` (do now) · `#waiting` (delegated) · `#someday`
-- **Context:** `#computer` `#phone` `#errands` `#home` `#office` `#anywhere` `#agenda`
-- **Fields:** `[due:: YYYY-MM-DD]` · `[scheduled:: YYYY-MM-DD]` · `[since:: YYYY-MM-DD]`
+## How to ask for something well
 
-## Six more plays (same pattern, different verb)
-Email triage · 1:1 prep · waiting-for tracker · decision log · draft-from-notes · daily priority brief.
+> **context + the shape of the output you want + where it should land**
 
-## Four principles worth stealing
-- You **own the data** (plain markdown — no lock-in).
-- **Small verbs**, not one big black-box brain.
-- **Human stays in the loop** — AI drafts, you confirm.
-- **Context compounds** — value grows every time you use it.
+| ✗ What most people type | ✓ What to type instead |
+|---|---|
+| "summarise my meeting" | "Summarise the standup: **decisions**, **action items with owners**, flag anything **I'm now waiting on**, and file it." |
+| "summarise the sprint" | "Compare this sprint to the last three. What's going wrong, and what should I raise with the team?" |
+| "what are my tasks" | "What's still on me today? Draft what you can." |
 
-## Four ways it goes wrong
-- Automating a broken process · trusting without verifying · feeding it things that shouldn't go in · over-automating away the thinking.
+The first column makes a document. The second builds a system that works for you next week.
 
-## Start in 15 minutes
-1. Open the second-brain template as an Obsidian vault → run `/gtd-setup`.
-2. `/gtd-capture` everything for a day (don't organise).
-3. `/gtd-process-inbox` tomorrow to empty it.
-4. `/gtd-weekly-review` on Friday. Now it's a system.
+## The five stops in the day
 
-**Stack:** Claude Code (or opencode / Claudian in Obsidian) + Obsidian + Dataview. Optional: Outlook / Gmail / Drive via MCP. No new SaaS bill.
+| | Stop | The ask |
+|---|---|---|
+| **08:40** | Inbox | "What needs a decision from me, what's FYI, who's waiting on me?" |
+| **09:30** | After standup | `/gtd-summarize-meetings` |
+| **11:00** | Before the next meeting | "What's still open from last time?" |
+| **14:00** | Sprint review | "What's going wrong, and what should I raise?" |
+| **16:30** | Clearing the list | "What's still on me? Draft what you can." |
+
+## Start here — don't build all five
+
+1. **Monday: just 09:30.** Summarise one meeting. Nothing else.
+2. Do it for one week. Notice what you *used* to drop.
+3. **Then add 11:00** — it only pays off once you have a few records to draw on.
+4. Everything else can wait a month.
+
+> People fail at this by trying all five on Monday and none of them by Thursday.
+
+## Four things that will bite you
+
+- **It invents specifics** — a due date nobody agreed. Read before you act, certainly before you forward.
+- **It files things wrong** — it's plain text, just fix the line.
+- **Nothing in, nothing out** — the 11:00 magic comes entirely from the 09:30 habit.
+- **Don't outsource the thinking** — especially feedback. That's avoiding the job, not saving time.
+
+## What you need
+
+Claude Code (or Claudian inside Obsidian) · Obsidian + Dataview — both free · mail and tracker connectors later, optional. No new budget.
 
 ---
-*Pick one loop. Run it for a week. Notice what you used to drop.*
+*It drafts. You send. That line is yours.*

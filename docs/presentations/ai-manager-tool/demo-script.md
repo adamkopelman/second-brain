@@ -1,143 +1,129 @@
-# Live Demo Script — *The AI Chief of Staff*
+# Demo Script — *The AI Chief of Staff*
 
-Exact steps for the five live demos, keyed to this second-brain vault. Everything here uses the vault's real skills (`.claude/skills/`). Run them in **Claude Code**, opencode, or **Claudian** (inside Obsidian). Times match the facilitator guide.
+Five stops in one Tuesday. **Two run live, three are shown as output.** Being clear with yourself about which is which is what keeps the session honest and stress-free.
 
-> **Golden rule of a live demo:** rehearse it once end-to-end before the room. If the network is shaky, the screenshots you capture during rehearsal are your fallback — flip to them and keep talking.
+| Stop | Mode | Why |
+|------|------|-----|
+| 08:40 Inbox | **shown** | Mail connector needs setup; not worth the live risk |
+| 09:30 Standup → actions | **LIVE** | Works out of the box (`gtd-summarize-meetings`) |
+| 11:00 Prep from last time | **LIVE** | Pure vault query — the most reliable demo you have |
+| 14:00 Sprint review | **shown** | No tracker connector in the vault today |
+| 16:30 It drafts, you send | **shown** | Sending mail isn't implemented — deliberately |
 
----
-
-## Setup (before the talk)
-
-```
-# From the vault root
-/gtd-status          # warms context; also your Demo 5 opener
-```
-
-Pre-stage so the demos have something to act on:
-
-1. **Capture a few items** so the inbox isn't empty for Demo 2:
-   ```
-   /gtd-capture the website feels slow lately
-   /gtd-capture book the offsite venue
-   /gtd-capture idea: monthly written update to the team
-   ```
-2. **Stage a meeting transcript** for Demo 4. Drop a short transcript file under `Meetings/` (a paragraph of realistic sync notes is enough), or use a real one you have. If you have the `record-meeting` Obsidian plugin, you can record 20 seconds live — but a staged transcript is safer for timing.
+> **Rehearse once, end to end, and screenshot every result.** Those screenshots are your fallback if the network dies mid-session, and they're what you'll paste into the slides.
 
 ---
 
-## Demo 1 · Capture — "the two-second inbox"  (slide 7)
+## Before the session
 
-**Say:** "Watch how little friction this is." Type a thought you genuinely have right now.
+### 1. Stage the meeting history — *don't skip this*
+
+The 11:00 demo is the best thing in the session and it **needs a prior meeting to read**. If `Meetings/` is empty it has nothing to say and the moment dies.
+
+Put at least one older meeting record in `Meetings/` — dated a week or two back, with an unresolved decision and someone who owes something. For example: an architecture sync where a datastore decision got deferred and a teammate owed a spike.
+
+### 2. Stage today's transcript
+
+Drop a short, realistic standup transcript into `Meetings/` for the 09:30 demo. A paragraph is plenty — mention a release decision, someone blocked on a review, and something you're waiting on.
+
+### 3. Warm the session
 
 ```
-/gtd-capture remind me to send Sam the Q3 figures before Friday
+/gtd-status
 ```
 
-**Show:** the new checkbox in `00 Inbox/` — tags applied (`#next`, maybe `#agenda [[Sam Rivera]]`), a `[due:: ]` inferred from "Friday."
+### 4. Swap in your real output (optional, high value)
 
-**Point out:** you didn't choose a folder, didn't switch apps, didn't stop thinking about your actual work. Capture and organise are *separate steps on purpose.*
-
-**Fallback line if it mis-tags:** "And notice — I can see exactly what it did, in plain text, and fix it. Nothing happens in the dark."
+Run the inbox triage, sprint review and end-of-day list against your own data, screenshot the results, and drop them into slides 4, 7 and 8. *"Here's what mine said this morning"* beats any example — just check nothing on screen is sensitive.
 
 ---
 
-## Demo 2 · Clarify — "empty the inbox"  (slide 8)
+## 08:40 · Inbox — **shown** (slide 4)
 
-**Say:** "Capturing is easy. The step everyone skips is deciding. Let's let it walk the decision tree."
+**Say:** "I don't need it writing my email. I need it telling me which four of forty I can't ignore."
 
-```
-/gtd-process-inbox
-```
+**The ask on the slide:**
+> "Go through this morning's mail. What needs a decision from me, what's FYI, and who's waiting on me?"
 
-**Show:** it takes items one at a time and asks the GTD questions:
-- Actionable? If no → trash / someday / reference.
-- One step or many? Many → a **project** with a first `#next` action.
-- Someone else's? → `#waiting` + `[[Person]]` + `[since:: ]`.
+**Point at:** the split — 4 need you, 12 FYI, 25 noise. Then the lesson: **its attention for your judgment.** Say it here; slides 5–8 are all variations of it.
 
-Take the "website feels slow" item all the way to a project (`10 Projects/Speed up the site.md`) with a first action like "Profile the homepage `#computer`."
-
-**Point out:** the inbox goes to zero. That "inbox zero for your brain" feeling is the hook.
+**If asked "is that live?"** — be straight. "That's this morning's output. The mail connector needs setting up; the meeting flows I'm about to run are live."
 
 ---
 
-## Demo 3 · Engage — "what do I do right now?"  (slide 9)
+## 09:30 · Standup → action items — **LIVE** (slide 5)
 
-**Say:** "The list you need is never *everything*. It's what fits this moment."
-
-```
-what can I do at my computer in 15 minutes?
-```
-(or `/gtd-next-actions` and then narrow by context/time/energy)
-
-**Show:** it returns only the `#next` actions matching `#computer` and a ~15-min budget, and *hides* the rest. Try a second filter live to make it real:
-
-```
-I'm on my phone with 5 minutes and low energy — what's easy?
-```
-
-**Point out:** context / time / energy is the GTD engage model. The AI is doing the filtering you'd otherwise do in your head (badly, under stress).
-
----
-
-## Demo 4 · Meetings → follow-through — *the money demo*  (slide 10)
-
-**Say:** "This is the one that pays for the whole system."
+**Say:** "The worst thing you can do with a meeting is remember it."
 
 ```
 /gtd-summarize-meetings
 ```
 
-**Show:** it finds the staged transcript and produces:
-- **Notes** — the gist.
-- **Decisions** — "we agreed to ship v2 behind a flag first."
-- **Action items** — real `#next` tasks *with owners*.
-- Delegated items become `#waiting [[Person]] [since:: DATE]`, and the relevant **People** notes get updated.
+**Show:** decisions, action items **with owners**, and the `#waiting` item with a person and a date attached.
 
-**Point out:** the meeting is over and the follow-through *already exists* — filed, assigned, and trackable. Next week when you ask "what am I waiting on from Priya?", it's there. This is the single most convincing moment; give it room.
+**Narrate the ask as you run it** — that's the teaching. "Notice I'm not asking for a summary. I'm asking for decisions, owners, and anything I'm now waiting on."
 
-*(If someone asks about recording: the vault ships a `record-meeting` Obsidian plugin — 🎙️/💬 ribbon buttons — that records to WAV and transcribes fully offline with vendored whisper.cpp. Summarising then runs here in Claude Code. See `docs/gtd/meeting-recording.md`.)*
+**Point out:** the `#waiting [[Roi]]` line. For a new team lead, an automatic record of who owes them what is worth the whole session.
 
 ---
 
-## Demo 5 · Review & dashboard — "keep it honest"  (slide 11)
+## 11:00 · Prep from last time — **LIVE** · *the money demo* (slide 6)
 
-**Say:** "A second brain you don't trust is just another pile. Here's the ritual that keeps trust."
+**Say:** "This is the one that changed the job for me."
 
-Opener (fast):
 ```
-/gtd-status
+I have the architecture sync in 10 minutes. What's still open from last time?
 ```
-**Show:** the brief — inbox count, active projects, `#next` ready, who you're waiting on, review recency.
 
-Then describe (or run, if time) the weekly ritual:
-```
-/gtd-weekly-review
-```
-**Show:** it walks the checklist — clear the inbox, review each project for a `#next`, check stale `#waiting` items, look at what's due.
+**Show:** still-open items, what's changed since, and a suggested agenda — all assembled from records that already existed. **Nothing new was typed.**
 
-Finish on the dashboard:
-```
-/gtd-dashboard
-```
-**Show:** it builds a portable `dashboard.html` you can open in any browser or on your phone — KPIs + card grid. (In Obsidian, `Dashboard.md` is the live Dataview version.)
+**Let this line land:** *"deferred twice."* Every new lead in the room has a decision that's been quietly deferred twice.
 
-**Point out:** the same data, three surfaces — terminal brief, Obsidian, browser/phone. You engage wherever you are.
+**Then be rigorous:** "This only works because of the 09:30 step. If I hadn't summarised that meeting, this screen is empty." That honesty is what makes Monday's ask credible.
 
 ---
 
-## Recovery kit (if something breaks)
+## 14:00 · Sprint review — **shown** (slide 7)
 
-- **Model/network fails:** flip to your rehearsal screenshots; keep narrating — the story matters more than the pixels.
-- **A skill errors:** run `/gtd-status`; it's the most robust and still makes the point.
-- **Inbox already empty for Demo 2:** capture two items live first — that just demos Demo 1 again, which is fine.
-- **Running long:** skip the live `/gtd-weekly-review` in Demo 5 and just show `/gtd-status` + the dashboard.
+**Do the contrast out loud before revealing the output:**
 
-## The five commands, at a glance
+- Weak: *"Summarise the sprint."* → a list of tickets you could have read yourself.
+- Strong: *"Compare this sprint to the last three. What's going wrong, and what should I raise with the team?"*
 
-| Demo | Command | One-line point |
-|------|---------|----------------|
-| 1 Capture | `/gtd-capture <thought>` | Get it out of your head in 2 seconds |
-| 2 Clarify | `/gtd-process-inbox` | Walk the decision tree to inbox zero |
-| 3 Engage | `/gtd-next-actions` | What fits *this* context, time, energy |
-| 4 Remember | `/gtd-summarize-meetings` | Meeting → filed, assigned follow-through |
-| 5 Review | `/gtd-status` · `/gtd-weekly-review` · `/gtd-dashboard` | Keep the system trustworthy |
+**Show:** the carry-over trend, the epic swallowing it, the review-load imbalance, the reopen rate.
+
+**Land on the Dana bullet:** "*Dana reviewed 3× anyone else* is a people problem your board will never raise." Then hand off explicitly to the rest of the day — that's the session earning its place in a soft-skills programme.
+
+---
+
+## 16:30 · It drafts, you send — **shown** (slide 8)
+
+**Say:** "Two of these it can write. Two it shouldn't touch."
+
+**The ask:**
+> "What's still on me today? Draft what you can."
+
+**Show:** two drafts ready, two marked *only you* (the code review and the escalation decision), and the waiting-on list with ages.
+
+**The line to deliver slowly:** **"Nothing sent. Pressing send is a promise from you to another person — that never gets delegated."**
+
+This is the judgment beat of the whole session. Don't rush it, and don't undercut it by joking about letting it send anyway.
+
+---
+
+## Recovery kit
+
+- **Network dies:** switch to rehearsal screenshots and keep narrating. The story carries it — nobody came for the pixels.
+- **A skill errors:** fall back to `/gtd-status`; it's the most robust command and still makes the point.
+- **`Meetings/` turns out empty:** run the 09:30 demo first, then use *its* output as the history for 11:00. Weaker, but it works.
+- **Running long:** cut the 08:40 stop and compress 14:00. Never cut 11:00.
+- **Someone asks for a live JIRA or email demo:** "Not today — those need connectors wired to your own accounts. Happy to show you the setup afterwards."
+
+## The two commands you actually type
+
+| Stop | Command |
+|------|---------|
+| 09:30 | `/gtd-summarize-meetings` |
+| 11:00 | `"[meeting] in 10 minutes. What's still open from last time?"` |
+
+Everything else is output you're showing. Two live commands is a feature — it's very hard for the demo to go wrong.
