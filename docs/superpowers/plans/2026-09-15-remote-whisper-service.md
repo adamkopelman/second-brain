@@ -38,7 +38,7 @@
 | `services/remote-whisper/app/__main__.py` | CLI/env wiring, deferred model load, server + worker startup, `EngineState` |
 | `services/remote-whisper/app/static/{index.html,logic.js,app.js,style.css}` | The queue/progress UI. `logic.js` is pure and unit-tested |
 | `services/remote-whisper/tests/test_{jobstore,engine,multipart,worker,server}.py` | stdlib `unittest` coverage |
-| `services/remote-whisper/tests/test_logic.mjs` | `node --test` coverage for `logic.js` |
+| `services/remote-whisper/tests/test_logic.js` | `node --test` coverage for `logic.js` |
 | `services/remote-whisper/{Dockerfile,requirements.txt,.dockerignore}` | Image build |
 | `deploy/helm/remote-whisper/**` | Chart: Deployment, Service, Ingress, PVC, ConfigMap, helpers, NOTES, test hook |
 | `scripts/remote_whisper/{build-image.sh,push-to-harbor.sh,lint-chart.sh,INSTALL.md}` | Build outside, push to Harbor inside, chart checks, bundle install guide |
@@ -1354,6 +1354,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.engine import FakeEngine  # noqa: E402
@@ -1425,8 +1426,12 @@ class ServerTestBase(unittest.TestCase):
         return status, json.loads(body or b"{}"), headers
 
     def upload_raw(self, payload=b"RIFFrandom", filename="rec.wav", name="Standup", language=None):
-        query = f"?filename={filename}&name={name}" + (f"&language={language}" if language else "")
-        return self.json_request("/api/jobs" + query, data=payload, method="POST",
+        # Percent-encode: a name like "Board meeting" would otherwise put a space in the request
+        # line and the server would reject it before any handler ran.
+        params = {"filename": filename, "name": name}
+        if language:
+            params["language"] = language
+        return self.json_request("/api/jobs?" + urlencode(params), data=payload, method="POST",
                                  content_type="application/octet-stream")
 
 
@@ -2252,7 +2257,7 @@ git commit -m "feat(whisper): process entrypoint with deferred model load and gr
 **Files:**
 - Create: `services/remote-whisper/app/static/logic.js`, `services/remote-whisper/app/static/index.html`,
   `services/remote-whisper/app/static/app.js`, `services/remote-whisper/app/static/style.css`
-- Test: `services/remote-whisper/tests/test_logic.mjs`
+- Test: `services/remote-whisper/tests/test_logic.js`
 
 **Interfaces:**
 - Consumes: the API from Task 5 (`GET /api/jobs`, `GET /api/jobs/{id}`,
@@ -2263,7 +2268,7 @@ git commit -m "feat(whisper): process entrypoint with deferred model load and gr
 
 - [ ] **Step 1: Write the failing test**
 
-Create `services/remote-whisper/tests/test_logic.mjs`:
+Create `services/remote-whisper/tests/test_logic.js`:
 
 ```js
 "use strict";
@@ -2363,7 +2368,7 @@ test("isActive marks jobs the page should keep polling for", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/user/second-brain && node --test services/remote-whisper/tests/test_logic.mjs`
+Run: `cd /home/user/second-brain && node --test services/remote-whisper/tests/test_logic.js`
 Expected: FAIL — `Cannot find module '../app/static/logic.js'`
 
 - [ ] **Step 3: Write minimal implementation**
@@ -2471,7 +2476,7 @@ if (typeof window !== "undefined") window.WhisperLogic = API;
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/user/second-brain && node --test services/remote-whisper/tests/test_logic.mjs`
+Run: `cd /home/user/second-brain && node --test services/remote-whisper/tests/test_logic.js`
 Expected: PASS — 9 tests
 
 - [ ] **Step 5: Write the page shell**
@@ -2743,7 +2748,7 @@ Expected: the HTML shell comes back, and the JSON lists both jobs progressing to
 
 ```bash
 cd /home/user/second-brain
-git add services/remote-whisper/app/static services/remote-whisper/tests/test_logic.mjs
+git add services/remote-whisper/app/static services/remote-whisper/tests/test_logic.js
 git commit -m "feat(whisper): queue page with live progress, drag-drop upload and transcript view"
 ```
 
@@ -4234,7 +4239,7 @@ remote-whisper service with live progress.
 cd /home/user/second-brain
 node --check .obsidian/plugins/record-meeting/main.js
 node --check .obsidian/plugins/record-meeting/lib.js
-node --test .obsidian/plugins/record-meeting/test/lib.test.js scripts/dashboard_static/logic.test.js scripts/dashboard_static/recorder.test.js services/remote-whisper/tests/test_logic.mjs
+node --test .obsidian/plugins/record-meeting/test/lib.test.js scripts/dashboard_static/logic.test.js scripts/dashboard_static/recorder.test.js services/remote-whisper/tests/test_logic.js
 python3 -m pytest scripts/tests/ -q
 ```
 
@@ -4759,7 +4764,7 @@ artifacts and their sha256s from `MANIFEST.txt`); step 3 push
 http://<host>/healthz`, open the queue page, drag a short wav onto it); step 6 update the vault
 (copy `vault-changes/` over an air-gapped clone at the same relative paths, then set the service URL
 in Obsidian → Settings → Record Meeting); how to run the tests offline (`python3 -m unittest discover
--s service/tests -t service` and `node --test service/tests/test_logic.mjs`); the no-authentication
+-s service/tests -t service` and `node --test service/tests/test_logic.js`); the no-authentication
 warning; and a throughput note (one job at a time, 0.5–1.5× realtime, raise `resources.limits.cpu`).
 
 - [ ] **Step 7: Ignore build outputs but keep the bundle**
@@ -4807,7 +4812,7 @@ cd /home/user/second-brain
 python3 -m unittest discover -s services/remote-whisper/tests -t . -v 2>&1 | tail -3
 python3 -m pytest scripts/tests/ -q 2>&1 | tail -3
 node --test scripts/dashboard_static/logic.test.js scripts/dashboard_static/recorder.test.js \
-  .obsidian/plugins/record-meeting/test/lib.test.js services/remote-whisper/tests/test_logic.mjs 2>&1 | tail -8
+  .obsidian/plugins/record-meeting/test/lib.test.js services/remote-whisper/tests/test_logic.js 2>&1 | tail -8
 bash scripts/remote_whisper/lint-chart.sh
 node --check .obsidian/plugins/record-meeting/main.js
 ```
