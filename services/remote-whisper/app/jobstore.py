@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at TEXT,
     finished_at TEXT
 );
-CREATE INDEX IF NOT EXISTS jobs_status_created ON jobs (status, created_at, id);
+CREATE INDEX IF NOT EXISTS jobs_status_created ON jobs (status, created_at);
 """
 
 
@@ -82,10 +82,11 @@ class JobStore:
         return self.get(job_id)
 
     def claim_next(self) -> dict | None:
-        """Atomically move the oldest queued job to running. FIFO is the database's job, not ours."""
+        """Atomically move the oldest queued job to running. FIFO is the database's job, not ours.
+        Ties on created_at break on rowid (insertion order), not the random uuid id, which would make FIFO a coin flip."""
         with self._lock:
             row = self._conn.execute(
-                "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, id LIMIT 1"
+                "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, rowid LIMIT 1"
             ).fetchone()
             if row is None:
                 return None
@@ -182,7 +183,7 @@ class JobStore:
         if status:
             sql += " WHERE status = ?"
             params.append(status)
-        sql += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        sql += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
         params.append(int(limit))
         with self._lock:
             rows = self._conn.execute(sql, params).fetchall()
@@ -212,7 +213,7 @@ class JobStore:
     def _queued_order(self) -> list[str]:
         """Caller must already hold self._lock — this never takes it, so _decorate stays lock-free."""
         rows = self._conn.execute(
-            "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, id"
+            "SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at, rowid"
         ).fetchall()
         return [r["id"] for r in rows]
 
