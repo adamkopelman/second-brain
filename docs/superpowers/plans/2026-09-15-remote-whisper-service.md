@@ -2510,8 +2510,8 @@ def main(argv=None) -> int:
         worker.stop()
         stopping.set()
 
-    # Installed BEFORE the model loads, not after. Loading a 3GB model takes minutes, and a
-    # rollout can deliver SIGTERM in the middle of it. Handlers registered after the load would
+    # Installed BEFORE serve() and the model loads, not after. Loading a 3GB model takes minutes,
+    # and a rollout can deliver SIGTERM in the middle of it. Handlers registered after the load would
     # leave that whole window on the OS default disposition: the process would die instantly,
     # the server would never shut down, and the database would never close.
     signal.signal(signal.SIGTERM, shutdown)
