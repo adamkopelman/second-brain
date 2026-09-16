@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Whisper queue</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Whisper queue</h1>
+      <p id="summary" class="summary">Loading…</p>
+      <p id="banner" class="banner" hidden></p>
+    </header>
+
+    <section id="dropzone" class="dropzone" tabindex="0" aria-label="Upload audio to transcribe">
+      <p><strong>Drop audio here</strong> or <button type="button" id="pick">choose a file</button></p>
+      <p class="hint">wav, mp3, m4a, flac, ogg, webm — transcribed with whisper-large-v3 on CPU</p>
+      <input type="file" id="file" accept="audio/*" hidden />
+      <div id="uploads" class="uploads"></div>
+    </section>
+
+    <main>
+      <ul id="jobs" class="jobs"></ul>
+      <p id="empty" class="empty" hidden>Nothing in the queue yet.</p>
+    </main>
+
+    <script src="logic.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
