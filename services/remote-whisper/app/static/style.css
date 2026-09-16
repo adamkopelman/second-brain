@@ -1,0 +1,283 @@
+/* Whisper queue page — plain CSS, no build step, must work air-gapped. */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1b1f24;
+  --muted: #5b6572;
+  --border: #d8dee5;
+  --accent: #2563eb;
+  --accent-weak: #eaf0fe;
+  --danger: #b3261e;
+  --danger-bg: #fdecea;
+  --danger-border: #f3c1bd;
+
+  --pill-queued-bg: #eceff1;
+  --pill-queued-text: #454e56;
+  --pill-running-bg: #dbeafe;
+  --pill-running-text: #1d4ed8;
+  --pill-done-bg: #dcf5e3;
+  --pill-done-text: #1a7f37;
+  --pill-failed-bg: #fbdcd9;
+  --pill-failed-text: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --surface: #1c2027;
+    --text: #e7eaee;
+    --muted: #9aa4b1;
+    --border: #333a44;
+    --accent: #6d9bff;
+    --accent-weak: #1e2a44;
+    --danger: #ff8a80;
+    --danger-bg: #3a1f1d;
+    --danger-border: #6b3330;
+
+    --pill-queued-bg: #2a2f37;
+    --pill-queued-text: #c3cad3;
+    --pill-running-bg: #1c355e;
+    --pill-running-text: #9dc0ff;
+    --pill-done-bg: #163a24;
+    --pill-done-text: #7fe0a0;
+    --pill-failed-bg: #4a201d;
+    --pill-failed-text: #ff9d94;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+  width: min(900px, 100% - 2rem);
+  margin-inline: auto;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  line-height: 1.4;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+
+.summary {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+}
+
+.banner {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.dropzone:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dropzone.dragging {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.dropzone p {
+  margin: 0.25rem 0;
+}
+
+.dropzone .hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dropzone button,
+.toggle,
+.transcript-actions button,
+.button-link {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+}
+
+.dropzone button {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: transparent;
+}
+
+.button-link {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.uploads {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.upload {
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: left;
+}
+
+.upload-failed {
+  color: var(--danger);
+}
+
+.jobs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.job {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 0.75rem 0.9rem;
+}
+
+.job-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.job-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pill {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pill-queued {
+  background: var(--pill-queued-bg);
+  color: var(--pill-queued-text);
+}
+
+.pill-running {
+  background: var(--pill-running-bg);
+  color: var(--pill-running-text);
+}
+
+.pill-done {
+  background: var(--pill-done-bg);
+  color: var(--pill-done-text);
+}
+
+.pill-failed {
+  background: var(--pill-failed-bg);
+  color: var(--pill-failed-text);
+}
+
+.bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  margin: 0.55rem 0 0.4rem;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.job-failed .bar-fill {
+  background: var(--danger);
+}
+
+.job-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.toggle {
+  margin-top: 0.6rem;
+}
+
+.transcript {
+  margin-top: 0.6rem;
+}
+
+.transcript-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0 0 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85rem;
+}
+
+.job-failed .transcript-body {
+  color: var(--danger);
+}
+
+.transcript-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+@media (max-width: 360px) {
+  body {
+    width: min(900px, 100% - 1.5rem);
+    padding: 0.75rem;
+  }
+
+  .job-head {
+    flex-wrap: wrap;
+  }
+}
