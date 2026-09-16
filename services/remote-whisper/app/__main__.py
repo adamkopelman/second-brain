@@ -35,6 +35,11 @@ DEFAULTS = {
 TRUTHY = {"1", "true", "yes", "on"}
 FALSEY = {"0", "false", "no", "off"}
 
+# How long to wait for the worker thread after asking it to stop. Long enough for an in-flight
+# result to reach the database, short enough to stay well inside a pod's termination grace period.
+# A worker mid-transcription will not make it — that job is requeued on the next start by design.
+WORKER_JOIN_SECONDS = 10
+
 
 @dataclass
 class Config:
@@ -141,6 +146,22 @@ def main(argv=None) -> int:
         print(f"[whisper] requeued {recovered} job(s) interrupted by a restart", flush=True)
 
     engine_state = EngineState()
+    engine = build_engine(config)
+    worker = Worker(store, engine, retention_days=config.retention_days)
+    stopping = threading.Event()
+
+    def shutdown(signum, _frame):
+        print(f"[whisper] signal {signum}, shutting down", flush=True)
+        worker.stop()
+        stopping.set()
+
+    # Installed BEFORE serve() and the model loads, not after. Loading a 3GB model takes minutes,
+    # and a rollout can deliver SIGTERM in the middle of it. Handlers registered after the load
+    # would leave that whole window on the OS default disposition: the process would die instantly,
+    # the server would never shut down, and the database would never close.
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
+
     static_dir = Path(__file__).resolve().parent / "static"
     handler = make_handler(store, engine_state, audio_dir, static_dir,
                            max_upload_bytes=config.max_upload_bytes,
@@ -149,31 +170,36 @@ def main(argv=None) -> int:
     threading.Thread(target=httpd.serve_forever, name="http", daemon=True).start()
     print(f"[whisper] serving on http://{config.host}:{config.port}", flush=True)
 
-    engine = build_engine(config)
-    print(f"[whisper] loading model from {config.model_path} "
-          f"(compute_type={config.compute_type}, threads={config.threads or 'auto'})", flush=True)
-    try:
-        engine.load()
-    except Exception as exc:  # noqa: BLE001 - stay up so /readyz can explain why
-        engine_state.mark_failed(exc)
-        print(f"[whisper] MODEL LOAD FAILED: {exc}", file=sys.stderr, flush=True)
+    if stopping.is_set():
+        print("[whisper] asked to stop before the model loaded; skipping the load", flush=True)
     else:
-        engine_state.mark_ready()
-        print("[whisper] model ready", flush=True)
+        print(f"[whisper] loading model from {config.model_path} "
+              f"(compute_type={config.compute_type}, threads={config.threads or 'auto'})", flush=True)
+        try:
+            engine.load()
+        except Exception as exc:  # noqa: BLE001 - stay up so /readyz can explain why
+            engine_state.mark_failed(exc)
+            print(f"[whisper] MODEL LOAD FAILED: {exc}", file=sys.stderr, flush=True)
+        else:
+            engine_state.mark_ready()
+            print("[whisper] model ready", flush=True)
 
-    stopping = threading.Event()
-    worker = Worker(store, engine, retention_days=config.retention_days)
-    if engine_state.ready:
-        threading.Thread(target=worker.run, name="worker", daemon=True).start()
+    worker_thread = None
+    if engine_state.ready and not stopping.is_set():
+        worker_thread = threading.Thread(target=worker.run, name="worker", daemon=True)
+        worker_thread.start()
 
-    def shutdown(signum, _frame):
-        print(f"[whisper] signal {signum}, shutting down", flush=True)
-        worker.stop()
-        stopping.set()
-
-    signal.signal(signal.SIGTERM, shutdown)
-    signal.signal(signal.SIGINT, shutdown)
     stopping.wait()
+    worker.stop()
+    if worker_thread is not None:
+        # Give an in-flight result time to reach the database before it closes. Without this,
+        # finish()/fail() can hit a closed connection: the transcript is discarded, the log claims
+        # a failure for a job that actually succeeded, and requeue_running() redoes the whole
+        # transcription on the next boot.
+        worker_thread.join(timeout=WORKER_JOIN_SECONDS)
+        if worker_thread.is_alive():
+            print(f"[whisper] worker still busy after {WORKER_JOIN_SECONDS}s; its job will be "
+                  "requeued on the next start", flush=True)
     httpd.shutdown()
     store.close()
     return 0
