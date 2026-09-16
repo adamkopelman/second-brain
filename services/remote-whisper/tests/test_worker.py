@@ -120,11 +120,72 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(worker.sweep_retention(), 0)  # rate-limited: skipped, not swept
         self.assertIsNotNone(self.store.get(second["id"]))
 
-    def test_unlink_audio_ignores_missing_files(self):
+    def test_unlink_audio_reports_only_real_failures(self):
         present = self.audio / "present.wav"
         present.write_bytes(b"x")
-        self.assertEqual(unlink_audio([str(present), str(self.audio / "absent.wav")]), 1)
+        # A directory cannot be unlinked, so it stands in for a read-only volume or a permission
+        # error; an absent file is not a failure because nothing is left behind.
+        undeletable = self.audio / "a-directory.wav"
+        undeletable.mkdir()
+        failures = unlink_audio([str(present), str(self.audio / "absent.wav"), str(undeletable)])
+        self.assertEqual(failures, [str(undeletable)])
         self.assertFalse(present.exists())
+
+    def test_a_raising_store_does_not_kill_the_run_loop(self):
+        """The single worker thread must outlive a database or volume error, or the service answers
+        /healthz forever while transcribing nothing."""
+        job = self.enqueue("survivor")
+        real_claim = self.store.claim_next
+        calls = {"n": 0}
+
+        def flaky_claim():
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("database is locked")
+            return real_claim()
+
+        self.store.claim_next = flaky_claim
+        logs = []
+        stop = threading.Event()
+        worker = Worker(self.store, loaded_engine(), poll_interval=0.01, stop_event=stop,
+                        log=logs.append)
+        thread = threading.Thread(target=worker.run)
+        thread.start()
+        try:
+            for _ in range(500):
+                if self.store.get(job["id"])["status"] == "done":
+                    break
+                threading.Event().wait(0.01)
+        finally:
+            worker.stop()
+            thread.join(timeout=5)
+        self.assertEqual(self.store.get(job["id"])["status"], "done")
+        self.assertTrue(any("worker loop error" in line for line in logs))
+        self.assertFalse(thread.is_alive())
+
+    def test_a_failure_that_cannot_be_recorded_is_logged_not_raised(self):
+        job = self.enqueue("unrecordable")
+
+        def exploding_fail(job_id, error):
+            raise RuntimeError("disk is full")
+
+        self.store.fail = exploding_fail
+        logs = []
+        worker = Worker(self.store, loaded_engine(fail_with="ct2 blew up"), log=logs.append)
+        self.assertEqual(worker.run_once(), job["id"])  # must not raise
+        self.assertTrue(any("could not record failure" in line for line in logs))
+
+    def test_sweep_retention_reports_audio_it_could_not_delete(self):
+        job = self.enqueue("orphan")
+        Worker(self.store, loaded_engine()).run_once()
+        audio_path = Path(self.store.get(job["id"])["audio_path"])
+        audio_path.unlink()
+        audio_path.mkdir()  # undeletable stand-in for a read-only volume
+        self.clock.advance(20 * 86400)
+        logs = []
+        worker = Worker(self.store, loaded_engine(), retention_days=14, log=logs.append)
+        self.assertEqual(worker.sweep_retention(force=True), 1)
+        self.assertTrue(any("could NOT be deleted" in line for line in logs))
 
 
 if __name__ == "__main__":
