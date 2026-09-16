@@ -5,10 +5,11 @@ import json
 import re
 import sys
 import time
+import traceback
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from .multipart import (MalformedMultipart, MultipartTooLarge, boundary_from_content_type,
                         parse_multipart)
@@ -46,6 +47,29 @@ class EngineState:
 def _safe_filename(raw: str) -> str:
     """Keep a basename only — an upload must never be able to choose a path."""
     return Path(unquote(raw or "")).name.strip()
+
+
+_UNSAFE_FILENAME = re.compile(r"[^A-Za-z0-9 ._()\[\]-]")
+
+
+def content_disposition(name: str) -> str:
+    """Build a Content-Disposition header value for a name that came from an upload.
+
+    Two properties are load-bearing, and both are about untrusted input reaching a header:
+
+    1. It must not be able to carry CR or LF. `send_header` performs no validation, so a job named
+       "x\r\nSet-Cookie: ..." would inject real response headers (HTTP response splitting).
+    2. It must be latin-1 encodable, because http.server encodes headers as latin-1 — and this
+       vault's meeting names are usually Hebrew. An unencodable character would raise mid-response,
+       turning a download into a dropped connection.
+
+    RFC 6266 solves both: `filename=` carries an ASCII-folded fallback, `filename*=` carries the
+    real name percent-encoded as UTF-8.
+    """
+    stem = (name or "").replace("\r", " ").replace("\n", " ").strip() or "transcript"
+    ascii_stem = _UNSAFE_FILENAME.sub("_", stem).strip("._ ") or "transcript"
+    return (f'attachment; filename="{ascii_stem}.txt"; '
+            f"filename*=UTF-8''{quote(stem + '.txt', safe='')}")
 
 
 def make_handler(store, engine_state, audio_dir, static_dir, max_upload_bytes,
@@ -89,6 +113,30 @@ def make_handler(store, engine_state, audio_dir, static_dir, max_upload_bytes,
         # --- routing ----------------------------------------------------
 
         def do_GET(self):  # noqa: N802
+            self._guarded(self._route_get)
+
+        def do_HEAD(self):  # noqa: N802
+            self._guarded(self._route_get)
+
+        def do_POST(self):  # noqa: N802
+            self._guarded(self._route_post)
+
+        def _guarded(self, route):
+            """Every request must end in an HTTP response. Without this, an unexpected failure
+            (a disk error, a database fault) escapes the handler and closes the socket with zero
+            bytes written — the client sees a bare connection reset it cannot report, and the
+            operator sees nothing at all."""
+            try:
+                route()
+            except Exception as exc:  # noqa: BLE001 - answer, log, and keep serving
+                sys.stderr.write(f"[whisper] unhandled error on {self.path}: "
+                                 f"{traceback.format_exc()}\n")
+                try:
+                    self._fail(500, f"internal error: {type(exc).__name__}")
+                except Exception:  # noqa: BLE001 - response already started; just drop it
+                    self.close_connection = True
+
+        def _route_get(self):
             path = urlparse(self.path).path
             if path == "/healthz":
                 return self._json({"status": "ok", "ready": engine_state.ready})
@@ -105,10 +153,7 @@ def make_handler(store, engine_state, audio_dir, static_dir, max_upload_bytes,
                 return self._job_detail(rest)
             return self._static(path)
 
-        def do_HEAD(self):  # noqa: N802
-            self.do_GET()
-
-        def do_POST(self):  # noqa: N802
+        def _route_post(self):
             path = urlparse(self.path).path
             if path == "/api/jobs":
                 return self._create_job(sync=False)
@@ -141,10 +186,9 @@ def make_handler(store, engine_state, audio_dir, static_dir, max_upload_bytes,
                 return self._fail(404, "no such job")
             if job["status"] != "done":
                 return self._fail(409, f"job is {job['status']}, not done")
-            filename = (job["name"] or "transcript").replace('"', "") + ".txt"
             self._send(200, (job["transcript"] or "").encode("utf-8"),
                        "text/plain; charset=utf-8",
-                       {"Content-Disposition": f'attachment; filename="{filename}"'})
+                       {"Content-Disposition": content_disposition(job["name"])})
 
         def _receive_audio(self):
             """Returns (fields, filename, staged_path, size) or raises _Rejected."""
@@ -225,9 +269,13 @@ def make_handler(store, engine_state, audio_dir, static_dir, max_upload_bytes,
                        job_id=job["id"])
 
         def _static(self, path):
-            name = "index.html" if path == "/" else path.lstrip("/")
-            target = (static_dir / name).resolve()
-            if (not str(target).startswith(str(static_dir.resolve()))
+            # is_relative_to, not a string prefix: "<static>-backup" starts with "<static>" as a
+            # string but is a different directory. And decode %20 so an asset with a space in its
+            # name is findable, the same way uploads decode their filename.
+            name = "index.html" if path == "/" else unquote(path.lstrip("/"))
+            static_root = static_dir.resolve()
+            target = (static_root / name).resolve()
+            if (not target.is_relative_to(static_root)
                     or not target.is_file()
                     or target.suffix not in STATIC_TYPES):
                 return self._fail(404, "not found")

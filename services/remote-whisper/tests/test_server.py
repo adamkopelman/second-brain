@@ -217,6 +217,57 @@ class StaticTest(ServerTestBase):
         self.assertEqual(self.request("/../whisper.db")[0], 404)
 
 
+class HeaderSafetyTest(ServerTestBase):
+    def finished_job(self, name, transcript="body", language="en"):
+        _, job, _ = self.upload_raw(name=name)
+        self.store.claim_next()
+        self.store.finish(job["id"], transcript, language, 1.0)
+        return job
+
+    def test_a_crlf_in_the_job_name_cannot_inject_response_headers(self):
+        job = self.finished_job("Evil\r\nX-Injected: pwned\r\nSet-Cookie: sess=hax")
+        status, _, headers = self.request(f"/api/jobs/{job['id']}/transcript")
+        self.assertEqual(status, 200)
+        self.assertFalse([k for k in headers if k.lower() in ("x-injected", "set-cookie")])
+        disposition = headers["Content-Disposition"]
+        self.assertNotIn("\r", disposition)
+        self.assertNotIn("\n", disposition)
+
+    def test_a_hebrew_job_name_still_downloads(self):
+        job = self.finished_job("ישיבת צוות", transcript="שלום עולם", language="he")
+        status, body, headers = self.request(f"/api/jobs/{job['id']}/transcript")
+        self.assertEqual(status, 200)
+        self.assertEqual(body.decode("utf-8"), "שלום עולם")
+        # http.server encodes headers as latin-1, so the real name can only ride in filename*.
+        self.assertIn("filename*=UTF-8''", headers["Content-Disposition"])
+        self.assertIn('filename="', headers["Content-Disposition"])
+
+
+class ErrorHandlingTest(ServerTestBase):
+    def test_an_unexpected_error_still_produces_a_500(self):
+        def boom(*args, **kwargs):
+            raise RuntimeError("database is gone")
+
+        self.store.list_jobs = boom
+        status, body, _ = self.json_request("/api/jobs")
+        self.assertEqual(status, 500)
+        self.assertIn("internal error", body["error"])
+
+
+class StaticSafetyTest(ServerTestBase):
+    def test_a_sibling_directory_sharing_the_static_prefix_is_refused(self):
+        sibling = self.static.parent / f"{self.static.name}-backup"
+        sibling.mkdir()
+        (sibling / "secret.js").write_text("// secret", encoding="utf-8")
+        self.assertEqual(self.request(f"/../{sibling.name}/secret.js")[0], 404)
+
+    def test_percent_encoded_asset_names_are_served(self):
+        (self.static / "my asset.js").write_text("// spaced", encoding="utf-8")
+        status, body, _ = self.request("/my%20asset.js")
+        self.assertEqual(status, 200)
+        self.assertIn(b"spaced", body)
+
+
 class OpenAIShimTest(ServerTestBase):
     def test_v1_transcriptions_blocks_until_the_worker_finishes(self):
         # FakeEngine mirrors the real engine and refuses to transcribe until load() has been
