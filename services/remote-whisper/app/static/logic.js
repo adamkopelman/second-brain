@@ -47,11 +47,22 @@ function ordinal(n) {
 function metaText(job) {
   if (!job) return "";
   if (job.status === "queued") {
-    const position = job.queue_position === 1 ? "Next up" : `${ordinal(job.queue_position)} in queue`;
+    // queue_position is legitimately null (the API omits it once a job leaves the queue), and
+    // ordinal(null) would render the literal string "nullth in queue".
+    const position =
+      job.queue_position === 1
+        ? "Next up"
+        : job.queue_position > 0
+        ? `${ordinal(job.queue_position)} in queue`
+        : "Queued";
     return `${position} · ${formatBytes(job.bytes)}`;
   }
   if (job.status === "running") {
-    const eta = job.eta_seconds ? `~${formatDuration(job.eta_seconds)} left` : "estimating…";
+    // null means "no estimate yet"; 0 means "about to finish" — a falsy test conflates them.
+    const eta =
+      job.eta_seconds === null || job.eta_seconds === undefined
+        ? "estimating…"
+        : `~${formatDuration(job.eta_seconds)} left`;
     return `${percentText(job.progress)} · ${formatDuration(job.elapsed_seconds)} elapsed · ${eta}`;
   }
   if (job.status === "done") {
