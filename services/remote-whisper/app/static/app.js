@@ -1,9 +1,10 @@
-// Queue page: polls the API, renders rows, uploads dropped files, expands finished transcripts.
+// Queue page: polls the API, updates rows in place, uploads dropped files, shows transcripts.
 "use strict";
 (function () {
   const L = window.WhisperLogic;
-  const POLL_VISIBLE_MS = 2000;
-  const POLL_HIDDEN_MS = 5000;
+  const POLL_ACTIVE_MS = 2000;
+  const POLL_IDLE_MS = 10000;
+  const POLL_HIDDEN_MS = 30000;
 
   const els = {
     summary: document.getElementById("summary"),
@@ -18,7 +19,11 @@
 
   const expanded = new Set();
   const transcripts = new Map();
+  const rows = new Map(); // job id -> row parts, so a tick updates instead of rebuilding
+  const latest = new Map(); // job id -> last seen job json
   let timer = null;
+  let timerMs = null;
+  let inFlight = false;
 
   function node(tag, className, text) {
     const element = document.createElement(tag);
@@ -32,7 +37,48 @@
     els.banner.hidden = !message;
   }
 
-  function renderTranscript(job) {
+  function buildRow(job) {
+    const li = node("li", `job job-${job.status}`);
+    const head = node("div", "job-head");
+    const name = node("span", "job-name");
+    const pill = node("span", "pill");
+    head.appendChild(name);
+    head.appendChild(pill);
+    const bar = node("div", "bar");
+    const fill = node("div", "bar-fill");
+    bar.appendChild(fill);
+    const meta = node("div", "job-meta");
+    const toggle = node("button", "toggle");
+    toggle.type = "button";
+    toggle.hidden = true;
+    const detail = node("div", "job-detail");
+    detail.hidden = true;
+    li.appendChild(head);
+    li.appendChild(bar);
+    li.appendChild(meta);
+    li.appendChild(toggle);
+    li.appendChild(detail);
+
+    const row = { li, name, pill, fill, meta, toggle, detail, detailKey: null };
+    toggle.addEventListener("click", () => {
+      if (expanded.has(job.id)) {
+        expanded.delete(job.id);
+      } else {
+        expanded.add(job.id);
+        const current = latest.get(job.id);
+        if (current && current.status === "done" && !transcripts.has(job.id)) {
+          loadTranscript(job.id);
+        }
+      }
+      updateRow(row, latest.get(job.id));
+    });
+    return row;
+  }
+
+  function buildDetail(job) {
+    if (job.status === "failed") {
+      return node("pre", "transcript-body", job.error || "No error message was recorded.");
+    }
     const wrap = node("div", "transcript");
     const text = transcripts.has(job.id) ? transcripts.get(job.id) : "Loading transcript…";
     wrap.appendChild(node("pre", "transcript-body", text));
@@ -56,38 +102,33 @@
     return wrap;
   }
 
-  function renderJob(job) {
-    const item = node("li", `job job-${job.status}`);
-    const head = node("div", "job-head");
-    head.appendChild(node("span", "job-name", job.name || job.filename));
-    head.appendChild(node("span", `pill pill-${job.status}`, L.statusLabel(job)));
-    item.appendChild(head);
+  // Updates an existing row's text and widths. Rebuilding the row (or its detail panel) on every
+  // tick is what resets scroll position inside an open transcript and drops keyboard focus, so the
+  // detail panel is only rebuilt when something it actually displays has changed.
+  function updateRow(row, job) {
+    if (!job) return;
+    row.li.className = `job job-${job.status}`;
+    row.name.textContent = job.name || job.filename;
+    row.pill.className = `pill pill-${job.status}`;
+    row.pill.textContent = L.statusLabel(job);
+    row.fill.style.width = job.status === "done" ? "100%" : L.percentText(job.progress);
+    row.meta.textContent = L.metaText(job);
 
-    const bar = node("div", "bar");
-    const fill = node("div", "bar-fill");
-    fill.style.width = job.status === "done" ? "100%" : L.percentText(job.progress);
-    bar.appendChild(fill);
-    item.appendChild(bar);
-    item.appendChild(node("div", "job-meta", L.metaText(job)));
-
-    if (job.status === "done" || job.status === "failed") {
-      const toggle = node("button", "toggle", expanded.has(job.id) ? "Hide transcript" : "Show transcript");
-      toggle.type = "button";
-      if (job.status === "failed") toggle.textContent = expanded.has(job.id) ? "Hide error" : "Show error";
-      toggle.addEventListener("click", () => {
-        if (expanded.has(job.id)) expanded.delete(job.id);
-        else {
-          expanded.add(job.id);
-          if (job.status === "done" && !transcripts.has(job.id)) loadTranscript(job.id);
-        }
-        tick();
-      });
-      item.appendChild(toggle);
-      if (expanded.has(job.id)) {
-        item.appendChild(job.status === "done" ? renderTranscript(job) : node("pre", "transcript-body", job.error || ""));
+    const finished = job.status === "done" || job.status === "failed";
+    row.toggle.hidden = !finished;
+    if (finished) {
+      const open = expanded.has(job.id);
+      const noun = job.status === "failed" ? "error" : "transcript";
+      row.toggle.textContent = `${open ? "Hide" : "Show"} ${noun}`;
+      const key = `${job.status}:${open}:${transcripts.has(job.id) ? transcripts.get(job.id).length : -1}`;
+      if (key !== row.detailKey) {
+        row.detailKey = key;
+        row.detail.replaceChildren(...(open ? [buildDetail(job)] : []));
       }
+      row.detail.hidden = !open;
+    } else {
+      row.detail.hidden = true;
     }
-    return item;
   }
 
   async function loadTranscript(jobId) {
@@ -98,17 +139,60 @@
     } catch (err) {
       transcripts.set(jobId, `Could not load transcript: ${err.message || err}`);
     }
-    tick();
+    const row = rows.get(jobId);
+    if (row) updateRow(row, latest.get(jobId));
   }
 
   function render(payload) {
     els.summary.textContent = L.summaryText(payload.stats, payload.model_ready);
     const jobs = L.sortJobs(payload.jobs);
-    els.jobs.replaceChildren(...jobs.map(renderJob));
+    const seen = new Set();
+
+    jobs.forEach((job) => {
+      seen.add(job.id);
+      latest.set(job.id, job);
+      let row = rows.get(job.id);
+      if (!row) {
+        row = buildRow(job);
+        rows.set(job.id, row);
+        els.jobs.appendChild(row.li);
+      }
+      updateRow(row, job);
+    });
+
+    rows.forEach((row, id) => {
+      if (!seen.has(id)) {
+        row.li.remove();
+        rows.delete(id);
+        latest.delete(id);
+        expanded.delete(id);
+        transcripts.delete(id);
+      }
+    });
+
+    // Re-append only when the order actually changed: moving a node re-inserts it, which would
+    // undo the in-place updates above for scroll and focus.
+    const wanted = jobs.map((job) => job.id).join(",");
+    const actual = Array.from(els.jobs.children)
+      .map((li) => {
+        let found = "";
+        rows.forEach((row, id) => {
+          if (row.li === li) found = id;
+        });
+        return found;
+      })
+      .join(",");
+    if (wanted !== actual) {
+      jobs.forEach((job) => els.jobs.appendChild(rows.get(job.id).li));
+    }
+
     els.empty.hidden = jobs.length > 0;
+    schedule(jobs.some(L.isActive) ? POLL_ACTIVE_MS : POLL_IDLE_MS);
   }
 
   async function tick() {
+    if (inFlight) return; // a slow response must not be clobbered by a later one
+    inFlight = true;
     try {
       const response = await fetch("api/jobs", { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -116,18 +200,24 @@
       showBanner("");
     } catch (err) {
       showBanner(`Cannot reach the service: ${err.message || err}`);
+    } finally {
+      inFlight = false;
     }
   }
 
-  function schedule() {
+  function schedule(ms) {
+    const wanted = document.hidden ? POLL_HIDDEN_MS : ms;
+    if (timer && timerMs === wanted) return;
     if (timer) clearInterval(timer);
-    timer = setInterval(tick, document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS);
+    timerMs = wanted;
+    timer = setInterval(tick, wanted);
   }
 
   function upload(file) {
     const row = node("div", "upload", `Uploading ${file.name}… 0%`);
     els.uploads.appendChild(row);
-    const query = `?filename=${encodeURIComponent(file.name)}&name=${encodeURIComponent(file.name.replace(/\.[^.]+$/, ""))}`;
+    const label = file.name.replace(/\.[^.]+$/, "");
+    const query = `?filename=${encodeURIComponent(file.name)}&name=${encodeURIComponent(label)}`;
     const request = new XMLHttpRequest();
     request.open("POST", `api/jobs${query}`);
     request.setRequestHeader("Content-Type", "application/octet-stream");
@@ -158,11 +248,22 @@
     request.send(file);
   }
 
+  function uploadAll(files) {
+    Array.from(files || []).forEach(upload);
+  }
+
   function wireUploads() {
     els.pick.addEventListener("click", () => els.file.click());
     els.file.addEventListener("change", () => {
-      Array.from(els.file.files || []).forEach(upload);
+      uploadAll(els.file.files);
       els.file.value = "";
+    });
+    // The drop zone is a tab stop, so it has to answer the keyboard too.
+    els.dropzone.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        els.file.click();
+      }
     });
     ["dragenter", "dragover"].forEach((type) =>
       els.dropzone.addEventListener(type, (event) => {
@@ -176,13 +277,11 @@
         els.dropzone.classList.remove("dragging");
       })
     );
-    els.dropzone.addEventListener("drop", (event) => {
-      Array.from(event.dataTransfer.files || []).forEach(upload);
-    });
+    els.dropzone.addEventListener("drop", (event) => uploadAll(event.dataTransfer.files));
   }
 
-  document.addEventListener("visibilitychange", schedule);
+  document.addEventListener("visibilitychange", () => schedule(timerMs || POLL_ACTIVE_MS));
   wireUploads();
   tick();
-  schedule();
+  schedule(POLL_ACTIVE_MS);
 })();

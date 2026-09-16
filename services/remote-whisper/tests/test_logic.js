@@ -41,6 +41,8 @@ test("metaText explains what each status is waiting on", () => {
     "3rd in queue · 2.0 KB"
   );
   assert.equal(L.metaText({ status: "queued", queue_position: 1, bytes: 1024 }), "Next up · 1.0 KB");
+  // The API nulls queue_position once a job leaves the queue; "nullth in queue" is not a thing.
+  assert.equal(L.metaText({ status: "queued", queue_position: null, bytes: 1024 }), "Queued · 1.0 KB");
   assert.equal(
     L.metaText({ status: "running", progress: 0.5, elapsed_seconds: 60, eta_seconds: 60 }),
     "50% · 1m 0s elapsed · ~1m 0s left"
@@ -48,6 +50,11 @@ test("metaText explains what each status is waiting on", () => {
   assert.equal(
     L.metaText({ status: "running", progress: 0, elapsed_seconds: 5, eta_seconds: null }),
     "0% · 5s elapsed · estimating…"
+  );
+  // 0 seconds left is an estimate, not the absence of one.
+  assert.equal(
+    L.metaText({ status: "running", progress: 0.99, elapsed_seconds: 60, eta_seconds: 0 }),
+    "99% · 1m 0s elapsed · ~0s left"
   );
   assert.equal(
     L.metaText({ status: "done", elapsed_seconds: 720, duration_seconds: 1800,
