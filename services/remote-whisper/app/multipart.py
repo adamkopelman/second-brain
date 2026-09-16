@@ -35,7 +35,10 @@ class _Reader:
     def __init__(self, rfile, content_length, chunk_size):
         self._rfile = rfile
         self._remaining = max(0, int(content_length))
-        self._chunk_size = max(1024, int(chunk_size))
+        # No floor: the tests pass a tiny chunk_size deliberately, to force a boundary to straddle
+        # two reads. A 1024-byte floor would swallow every test body whole and the split path would
+        # never run. Production callers pass 1 MiB.
+        self._chunk_size = max(1, int(chunk_size))
         self.buf = b""
 
     def fill(self, at_least):
