@@ -73,6 +73,31 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(self.dest.read_bytes(), payload)
         self.assertEqual(info["bytes"], len(payload))
 
+    def test_delimiter_straddling_two_reads_is_still_found(self):
+        """The parser must not depend on a delimiter arriving inside one read.
+
+        A stream that hands back at most 3 bytes per read guarantees the delimiter is split across
+        reads. Without this, `chunk_size=7` alone proves nothing: the reader is free to return more
+        than asked, and a small body can arrive whole on the first read.
+        """
+
+        class DribblingStream(io.BytesIO):
+            reads = 0
+
+            def read(self, size=-1):
+                DribblingStream.reads += 1
+                return super().read(3)
+
+        payload = b"--" + BOUNDARY[:-1] + b"y" * 40 + b"\r\n"
+        body = build_body(fields=[("name", "Dribble")], file_part=("file", "d.wav", payload))
+        fields, info = M.parse_multipart(
+            DribblingStream(body), len(body), BOUNDARY, self.dest, 1 << 20, chunk_size=7
+        )
+        self.assertEqual(fields, {"name": "Dribble"})
+        self.assertEqual(info, {"filename": "d.wav", "bytes": len(payload)})
+        self.assertEqual(self.dest.read_bytes(), payload)
+        self.assertGreater(DribblingStream.reads, len(body) // 4)  # proves it really dribbled
+
     def test_empty_file_part_is_allowed(self):
         _, info = self.parse(build_body(file_part=("file", "empty.wav", b"")))
         self.assertEqual(info, {"filename": "empty.wav", "bytes": 0})
