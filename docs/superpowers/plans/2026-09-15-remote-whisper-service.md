@@ -1713,8 +1713,11 @@ class StaticTest(ServerTestBase):
 
 class OpenAIShimTest(ServerTestBase):
     def test_v1_transcriptions_blocks_until_the_worker_finishes(self):
-        worker = Worker(self.store, FakeEngine(text="synchronous text", language="en"),
-                        poll_interval=0.01)
+        # FakeEngine mirrors the real engine and refuses to transcribe until load() has been
+        # called; production calls it once in __main__ before the worker thread starts.
+        engine = FakeEngine(text="synchronous text", language="en")
+        engine.load()
+        worker = Worker(self.store, engine, poll_interval=0.01)
         thread = threading.Thread(target=worker.run, daemon=True)
         thread.start()
         try:
@@ -1729,7 +1732,9 @@ class OpenAIShimTest(ServerTestBase):
         self.assertEqual(payload["text"], "synchronous text")
 
     def test_v1_transcriptions_reports_a_failed_job_as_an_error(self):
-        worker = Worker(self.store, FakeEngine(fail_with="decode error"), poll_interval=0.01)
+        engine = FakeEngine(fail_with="decode error")
+        engine.load()
+        worker = Worker(self.store, engine, poll_interval=0.01)
         thread = threading.Thread(target=worker.run, daemon=True)
         thread.start()
         try:
@@ -3310,7 +3315,11 @@ podLabels: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
-terminationGracePeriodSeconds: 60
+# stop() cannot interrupt a transcription mid-call, so a rollout or pod delete during a long job
+# waits this long and then SIGKILLs it. Survivable by design: a killed job is left `running`, and
+# the next startup requeues it (JobStore.requeue_running), so the work restarts rather than being
+# lost. 300s lets a short job finish; an hour-long grace period would hang every rollout instead.
+terminationGracePeriodSeconds: 300
 ```
 
 - [ ] **Step 4: Write the templates**
@@ -4461,7 +4470,13 @@ Required sections, in this order, with exact commands:
     `model ready`); `413`/timeout on upload through Ingress (the `proxy-body-size` /
     `proxy-read-timeout` annotations); `MODEL LOAD FAILED` in the log with `/readyz` returning the
     reason; a job stuck in `queued` because `/readyz` never went green; `Recreate` means a rollout
-    waits for the old pod to release the RWO volume; jobs requeued after a restart.
+    waits for the old pod to release the RWO volume; jobs requeued after a restart. Also state
+    plainly: **a rollout or pod delete during a transcription kills that job** — `stop()` cannot
+    interrupt the model mid-call, so after `terminationGracePeriodSeconds` (default 300) the pod is
+    SIGKILLed, the job is left `running`, and the next startup requeues it from the top. Nothing is
+    lost but the CPU time already spent, so prefer to roll out when the queue is empty. And: a log
+    line reading `retention removed N job(s) but M audio file(s) could NOT be deleted` means
+    orphaned recordings are filling the PVC — check volume permissions and remove them by hand.
 13. **Local development** — `python3 -m app --fake-engine --data-dir /tmp/whisper --port 8899`, and
     the test commands for both suites.
 
