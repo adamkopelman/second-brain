@@ -3,592 +3,317 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const L = require("./logic.js");
 
-test("escapeHtml escapes the five XSS-relevant characters", () => {
-  assert.equal(L.escapeHtml(`<a href="x">&'</a>`),
-    "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
-});
+const TODAY = "2026-09-29"; // a Tuesday
 
-test("escapeHtml handles null/undefined safely", () => {
+function todo(over) {
+  return Object.assign({
+    file: "10 Projects/P.md", line_text: "- [ ] " + (over.text || "x"), text: "x", links: [], done: false,
+    completed: null, status: "next", context: "computer", tags: [], when: null, evening: false, deadline: null,
+    since: null, heading: null, project: null, area: null, meeting: null, inbox: false,
+  }, over, { line_text: over.line_text || "- [ ] " + (over.text || "x") });
+}
+
+function stateWith(todos, extra) {
+  return Object.assign({ vault_name: "Vault", todos: todos, projects: [], areas: [], inbox_notes: [], meetings: [] }, extra);
+}
+
+const titles = (list) => list.map((t) => t.text);
+
+test("escapeHtml escapes the five XSS-relevant characters and tolerates null", () => {
+  assert.equal(L.escapeHtml(`<a href="x">&'</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
   assert.equal(L.escapeHtml(null), "");
-  assert.equal(L.escapeHtml(undefined), "");
 });
 
-test("isOverdue is true only for a date strictly before today", () => {
-  assert.equal(L.isOverdue("2026-09-01", "2026-09-10"), true);
-  assert.equal(L.isOverdue("2026-09-10", "2026-09-10"), false);
-  assert.equal(L.isOverdue("2026-09-11", "2026-09-10"), false);
-  assert.equal(L.isOverdue(null, "2026-09-10"), false);
+test("Today holds what's scheduled for today or earlier, or due by today; evening items split off", () => {
+  const s = stateWith([
+    todo({ text: "scheduled today", when: TODAY }),
+    todo({ text: "scheduled earlier", when: "2026-09-20" }),
+    todo({ text: "due today", deadline: TODAY }),
+    todo({ text: "overdue", deadline: "2026-09-27" }),
+    todo({ text: "evening", when: TODAY, evening: true }),
+    todo({ text: "tomorrow", when: "2026-09-30" }),
+    todo({ text: "someday but dated", when: TODAY, status: "someday" }),
+    todo({ text: "done", when: TODAY, done: true }),
+    todo({ text: "plain" }),
+  ]);
+  const t = L.listToday(s, TODAY);
+  assert.deepEqual(titles(t.day), ["overdue", "scheduled today", "scheduled earlier", "due today"]); // overdue first
+  assert.deepEqual(titles(t.evening), ["evening"]);
 });
 
-test("filterTasks matches text, project, or context case-insensitively", () => {
-  const tasks = [
-    { text: "Finalize homepage wireframe", project: "Website Redesign", context: "#computer" },
-    { text: "Call hosting provider", project: "Website Redesign", context: "#phone" },
-    { text: "Order flight", project: "Plan Family Trip", context: "#anywhere" },
-  ];
-  assert.equal(L.filterTasks(tasks, "").length, 3);
-  assert.equal(L.filterTasks(tasks, "flight").length, 1);
-  assert.equal(L.filterTasks(tasks, "WEBSITE").length, 2);
-  assert.equal(L.filterTasks(tasks, "phone").length, 1);
+test("Anytime is every available next action: not inbox, waiting, someday or scheduled ahead", () => {
+  const s = stateWith([
+    todo({ text: "loose next" }),
+    todo({ text: "project, untagged", status: null, project: "P" }),
+    todo({ text: "untagged journal line", status: null, file: "Journal/d.md" }),
+    todo({ text: "inbox", inbox: true }),
+    todo({ text: "waiting", status: "waiting" }),
+    todo({ text: "someday", status: "someday" }),
+    todo({ text: "later", when: "2026-10-05" }),
+    todo({ text: "today", when: TODAY }),
+    todo({ text: "in someday project", project: "S" }),
+  ], { projects: [{ name: "P", status: "active" }, { name: "S", status: "someday" }] });
+  assert.deepEqual(titles(L.listAnytime(s, TODAY)), ["loose next", "project, untagged", "today"]);
 });
 
-test("render produces per-tab counts for a populated state", () => {
-  const state = {
-    inbox_count: 2,
-    tasks_by_context: {
-      "#computer": [{ text: "Finalize homepage wireframe", file: "f.md",
-        line_text: "- [ ] Finalize homepage wireframe #next #computer [due:: 2026-09-12]",
-        project: "Website Redesign", due: "2026-09-12" }],
-      "#phone": [{ text: "Call hosting provider", file: "f.md",
-        line_text: "- [ ] Call hosting provider #next #phone", project: "Website Redesign" }],
-    },
-    waiting: [{ text: "Logo files", file: "f.md", line_text: "- [ ] Logo files #waiting" }],
-    due_soon: [{ text: "Finalize homepage wireframe", file: "f.md",
-      line_text: "- [ ] Finalize homepage wireframe #next #computer [due:: 2026-09-12]",
-      due: "2026-09-12" }],
-    active_projects: [{ name: "Website Redesign", file: "10 Projects/Website Redesign.md",
-      review: "2026-09-15", review_overdue: false }],
-    someday_projects: [],
+test("Someday lists someday to-dos and someday projects; Waiting sorts oldest first", () => {
+  const s = stateWith([
+    todo({ text: "sail", status: "someday" }),
+    todo({ text: "inside someday project", status: "someday", project: "S" }),
+    todo({ text: "newer", status: "waiting", since: "2026-09-20" }),
+    todo({ text: "older", status: "waiting", since: "2026-09-01" }),
+  ], { projects: [{ name: "S", status: "someday" }] });
+  const sd = L.listSomeday(s);
+  assert.deepEqual(titles(sd.todos), ["sail"]);
+  assert.deepEqual(sd.projects.map((p) => p.name), ["S"]);
+  assert.deepEqual(titles(L.listWaiting(s)), ["older", "newer"]);
+});
+
+test("Upcoming has the next seven days one by one, with events, then later months", () => {
+  const s = stateWith([
+    todo({ text: "thu", when: "2026-10-01" }),
+    todo({ text: "deadline only", deadline: "2026-10-02" }),
+    todo({ text: "october", when: "2026-10-20" }),
+    todo({ text: "november", deadline: "2026-11-03" }),
+    todo({ text: "someday", when: "2026-10-01", status: "someday" }),
+    todo({ text: "today", when: TODAY }),
+  ], { calendar: { status: "ok", events: [
+    { date: "2026-09-30", start: "2026-09-30T11:00:00", end: "2026-09-30T11:30:00", subject: "1:1" },
+    { date: TODAY, start: TODAY + "T09:00:00", end: TODAY + "T09:30:00", subject: "Standup" },
+  ] } });
+  const u = L.listUpcoming(s, TODAY);
+  assert.equal(u.days.length, 7);
+  assert.equal(u.days[0].date, "2026-09-30");
+  assert.deepEqual(u.days[0].events.map((e) => e.subject), ["1:1"]); // today's standup is on Today, not here
+  assert.deepEqual(titles(u.days[1].todos), ["thu"]);
+  assert.deepEqual(titles(u.days[2].todos), ["deadline only"]);
+  assert.deepEqual(u.months.map((m) => [m.month, titles(m.todos)]), [["2026-10", ["october"]], ["2026-11", ["november"]]]);
+});
+
+test("Logbook groups completed to-dos: Today, Yesterday, weekdays, then months", () => {
+  const s = stateWith([
+    todo({ text: "a", done: true, completed: TODAY }),
+    todo({ text: "b", done: true, completed: "2026-09-28" }),
+    todo({ text: "c", done: true, completed: "2026-09-25" }),
+    todo({ text: "d", done: true, completed: "2026-08-02" }),
+    todo({ text: "e", done: true, completed: null }),
+    todo({ text: "open" }),
+  ]);
+  assert.deepEqual(L.listLogbook(s, TODAY).map((g) => [g.label, titles(g.todos)]),
+    [["Today", ["a"]], ["Yesterday", ["b"]], ["Friday", ["c"]], ["August", ["d"]], ["Earlier", ["e"]]]);
+});
+
+test("parseWhen understands Things-style dates", () => {
+  const cases = {
+    today: "today", tonight: "evening", "this evening": "evening", someday: "someday", anytime: "anytime",
+    tomorrow: "2026-09-30", fri: "2026-10-02", friday: "2026-10-02", "next fri": "2026-10-09", tue: "2026-10-06",
+    "in 3 days": "2026-10-02", "2w": "2026-10-13", "next week": "2026-10-05", "next month": "2026-10-01",
+    weekend: "2026-10-03", "oct 3": "2026-10-03", "3 oct": "2026-10-03", "sep 1": "2027-09-01",
+    "2026-10-05": "2026-10-05", "2026-09-01": "today",
   };
-  const out = L.render(state, "", "2026-09-10");
-  const counts = Object.fromEntries(Object.entries(out.tabs).map(([k, v]) => [k, v.count]));
-  assert.deepEqual(counts, { today: 1, week: 1, tasks: 2, inbox: 0, waiting: 1, projects: 1 });
-  assert.match(out.tasksHtml, /Finalize homepage wireframe/);
-  assert.match(out.projectsHtml, /Website Redesign/);
-  assert.match(out.projectsHtml, /Someday \/ Maybe<\/h2><p class="empty">None\.<\/p>/);
+  for (const [text, want] of Object.entries(cases)) assert.equal(L.parseWhen(text, TODAY), want, text);
+  for (const junk of ["", "xyz", "ma", "feb 31"]) assert.equal(L.parseWhen(junk, TODAY), null, junk);
 });
 
-test("render escapes task text (no raw HTML injection)", () => {
-  const state = {
-    inbox_count: 0,
-    tasks_by_context: { "#computer": [{ text: '<img src=x onerror=alert(1)>', file: "f.md",
-      line_text: "x", project: null }] },
-    waiting: [], due_soon: [], active_projects: [], someday_projects: [],
-  };
-  const out = L.render(state, "", "2026-09-10");
-  assert.doesNotMatch(out.tasksHtml, /<img/);
-  assert.match(out.tasksHtml, /&lt;img/);
+test("dates read like Things: weekday this week, then month and day; deadlines count down", () => {
+  assert.equal(L.shortDate("2026-10-02", TODAY), "Fri");
+  assert.equal(L.shortDate("2026-10-12", TODAY), "Oct 12");
+  assert.equal(L.shortDate("2027-01-03", TODAY), "Jan 3, 2027");
+  assert.equal(L.deadlineLabel("2026-09-27", TODAY), "2 days ago");
+  assert.equal(L.deadlineLabel(TODAY, TODAY), "today");
+  assert.equal(L.deadlineLabel("2026-09-30", TODAY), "tomorrow");
+  assert.equal(L.deadlineLabel("2026-10-02", TODAY), "3 days left");
+  assert.equal(L.whenLabel({ when: TODAY, evening: true }, TODAY), "This Evening");
+  assert.equal(L.whenLabel({ when: "2026-10-02" }, TODAY), "Fri, Oct 2");
+  assert.equal(L.whenLabel({ status: "someday" }, TODAY), "Someday");
 });
 
-test("render respects the search query across sections", () => {
-  const state = {
-    inbox_count: 0,
-    tasks_by_context: {
-      "#computer": [{ text: "Finalize homepage wireframe", file: "f.md", line_text: "x",
-        project: "Website Redesign" }],
-      "#phone": [{ text: "Call hosting provider", file: "f.md", line_text: "y",
-        project: "Website Redesign" }],
-    },
-    waiting: [], due_soon: [], active_projects: [], someday_projects: [],
-  };
-  const out = L.render(state, "hosting", "2026-09-10");
-  assert.doesNotMatch(out.tasksHtml, /Finalize/);
-  assert.match(out.tasksHtml, /Call hosting provider/);
+test("routes round-trip through the URL hash, including project names with spaces", () => {
+  assert.deepEqual(L.parseRoute("#upcoming"), { view: "upcoming" });
+  assert.deepEqual(L.parseRoute(""), { view: "today" });
+  assert.deepEqual(L.parseRoute("#nonsense"), { view: "today" });
+  const r = { view: "project", name: "Website Redesign" };
+  assert.deepEqual(L.parseRoute(L.routeHash(r)), r);
 });
 
-test("render marks an overdue due date distinctly from a future one", () => {
-  const state = {
-    inbox_count: 0, tasks_by_context: {}, waiting: [],
-    due_soon: [
-      { text: "Late one", file: "f.md", line_text: "x", due: "2026-09-01" },
-      { text: "On time", file: "f.md", line_text: "y", due: "2026-09-14" },
-    ],
-    active_projects: [], someday_projects: [],
-  };
-  const out = L.render(state, "", "2026-09-10");
-  assert.match(out.todayHtml, /class="due overdue" title="2026-09-01">2026-09-01</);
-  assert.match(out.todayHtml, /class="due" title="2026-09-14">Mon</);
+test("homeRoute sends a to-do where it lives; newTodoDefaults files a new one where you are", () => {
+  const s = stateWith([], { projects: [{ name: "P", status: "active" }] });
+  assert.deepEqual(L.homeRoute(todo({ project: "P" }), s, TODAY), { view: "project", name: "P" });
+  assert.deepEqual(L.homeRoute(todo({ inbox: true }), s, TODAY), { view: "inbox" });
+  assert.deepEqual(L.homeRoute(todo({ when: TODAY }), s, TODAY), { view: "today" });
+  assert.deepEqual(L.homeRoute(todo({ when: "2026-10-09" }), s, TODAY), { view: "upcoming" });
+  assert.deepEqual(L.homeRoute(todo({ done: true }), s, TODAY), { view: "logbook" });
+  assert.equal(L.newTodoDefaults({ view: "today" }, TODAY).when, "today");
+  assert.equal(L.newTodoDefaults({ view: "upcoming" }, TODAY).when, "2026-09-30");
+  assert.equal(L.newTodoDefaults({ view: "someday" }, TODAY).status, "someday");
+  assert.equal(L.newTodoDefaults({ view: "project", name: "P" }, TODAY).project, "P");
+  assert.equal(L.newTodoDefaults({ view: "anytime" }, TODAY, "phone").context, "phone");
 });
 
-test("tasksForProject collects a project's tasks from every context plus waiting, deduplicated", () => {
-  const state = {
-    tasks_by_context: {
-      "#computer": [
-        { text: "A", file: "f.md", line_text: "a", project: "Website Redesign" },
-        { text: "B", file: "f.md", line_text: "b", project: "Plan Family Trip" },
-      ],
-      "#phone": [
-        { text: "A", file: "f.md", line_text: "a", project: "Website Redesign" }, // duplicate of A
-        { text: "C", file: "f.md", line_text: "c", project: "Website Redesign" },
-      ],
-    },
-    waiting: [{ text: "D", file: "f.md", line_text: "d", project: "Website Redesign" }],
-  };
-  const out = L.tasksForProject(state, "Website Redesign");
-  assert.equal(out.length, 3); // A, C, D — B excluded (different project), A not duplicated
-  assert.deepEqual(out.map((t) => t.text).sort(), ["A", "C", "D"]);
+test("Anytime groups loose to-dos first, then projects, areas gathering their own", () => {
+  const s = stateWith([], { projects: [{ name: "Site", area: "Work" }, { name: "Garage" }] });
+  const groups = L.groupByProject([
+    todo({ text: "site", project: "Site", area: "Work" }), todo({ text: "loose" }),
+    todo({ text: "work area", area: "Work" }), todo({ text: "garage", project: "Garage" }),
+  ], s);
+  assert.deepEqual(groups.map((g) => g.kind + ":" + (g.name || "")), ["loose:", "project:Garage", "area:Work", "project:Site"]);
 });
 
-test("taskDetailHtml renders editable text/due fields and escapes content", () => {
-  const t = { text: '<b>x</b>', file: "f.md", line_text: "- [ ] <b>x</b> #next #computer [due:: 2026-09-01]",
-    project: "Website Redesign", context: "#computer", due: "2026-09-01" };
-  const html = L.taskDetailHtml(t, "2026-09-10");
-  assert.match(html, /id="detail-text" value="&lt;b&gt;x&lt;\/b&gt;"/);
-  assert.match(html, /id="detail-due" value="2026-09-01"/);
-  assert.match(html, /class="pill overdue">overdue/); // 2026-09-01 is before 2026-09-10
-  assert.match(html, /class="detail-save"/);
-  assert.match(html, /class="detail-mark-done"/);
-  assert.match(html, /class="detail-delete"/);
-  assert.match(html, /proj-open" data-name="Website Redesign"/);
+test("tags are contexts plus extra tags, ordered like the GTD contexts, and filter lists", () => {
+  const todos = [todo({ context: "phone" }), todo({ context: "computer", tags: ["reading"] }), todo({ context: "phone" })];
+  assert.deepEqual(L.tagCounts(todos), [{ tag: "computer", count: 1 }, { tag: "phone", count: 2 }, { tag: "reading", count: 1 }]);
+  assert.equal(L.byTag(todos, "phone").length, 2);
+  assert.equal(L.byTag(todos, null).length, 3);
 });
 
-test("taskDetailHtml shows 'none' for an inbox task with no project", () => {
-  const t = { text: "x", file: "00 Inbox/a.md", line_text: "- [ ] x", project: null, context: null, due: null };
-  const html = L.taskDetailHtml(t, "2026-09-10");
-  assert.match(html, /none — inbox capture/);
-  assert.doesNotMatch(html, /class="pill overdue"/);
+test("a to-do row escapes its text, marks direction, and shows star, deadline and project", () => {
+  const html = L.todoRow(todo({ text: "<b>x</b>", deadline: "2026-09-27", when: TODAY, project: "Site" }), { today: TODAY, list: "anytime" });
+  assert.ok(html.includes("&lt;b&gt;x&lt;/b&gt;"));
+  assert.ok(!html.includes("<b>x</b>"));
+  assert.ok(html.includes('dir="auto"'));
+  assert.ok(html.includes("i-today"), "items in Today carry a star elsewhere");
+  assert.ok(/deadline urgent[^>]*>.*2 days ago/.test(html));
+  assert.ok(html.includes('class="where" dir="auto">Site'));
+  assert.ok(!L.todoRow(todo({ when: TODAY }), { today: TODAY, list: "today" }).includes("i-today"), "no star on Today itself");
 });
 
-test("projectDetailHtml shows outcome, review pill, and its open tasks", () => {
-  const p = { name: "Website Redesign", file: "10 Projects/Website Redesign.md",
-    review: "2026-09-15", review_overdue: false, outcome: "Ship the new site." };
-  const tasks = [{ text: "Finalize wireframe", file: "f.md", line_text: "x", project: "Website Redesign" }];
-  const html = L.projectDetailHtml(p, tasks, "2026-09-10");
-  assert.match(html, /Ship the new site\./);
-  assert.match(html, /Finalize wireframe/);
-  assert.doesNotMatch(html, /No outcome set yet/);
-  assert.match(html, /Open full note in Obsidian/);
+test("an open to-do renders as an editable card with When, Deadline, tag and Move", () => {
+  const t = todo({ text: "Draft", when: "2026-10-02", deadline: "2026-10-09", context: "phone" });
+  const key = L.taskKey(t.file, t.line_text);
+  const html = L.todoRow(t, { today: TODAY, list: "anytime", expanded: key });
+  assert.ok(html.includes('class="card-title"') && html.includes('value="Draft"'));
+  assert.ok(html.includes("Fri, Oct 2"));
+  assert.ok(html.includes('value="2026-10-09"'));
+  assert.ok(/<option value="phone" selected>/.test(html));
+  assert.ok(!html.includes("No tag"), "a set context can be changed, not removed");
+  assert.ok(html.includes('data-act="move"') && html.includes('data-act="delete"'));
 });
 
-test("projectDetailHtml shows placeholders for a project with no outcome and no open tasks", () => {
-  const p = { name: "Learn Spanish", file: "10 Projects/Learn Spanish.md", review: null, review_overdue: false, outcome: null };
-  const html = L.projectDetailHtml(p, [], "2026-09-10");
-  assert.match(html, /No outcome set yet\./);
-  assert.match(html, /No open tasks\./);
+test("renderView shows Today with meetings, heads-up items and This Evening", () => {
+  const s = stateWith([todo({ text: "day", when: TODAY }), todo({ text: "night", when: TODAY, evening: true }),
+    todo({ text: "needs tag", context: "unknown" })],
+  { calendar: { status: "ok", events: [{ date: TODAY, start: TODAY + "T09:00:00", end: TODAY + "T09:30:00", subject: "Standup" }] },
+    meetings: [{ name: "m", transcription_status: "pending" }] });
+  const html = L.renderView(s, { view: "today" }, { today: TODAY, now: TODAY + "T10:00", list: "today" });
+  assert.ok(html.includes("Standup") && html.includes("event-past"));
+  assert.ok(html.includes("This Evening"));
+  assert.ok(html.includes("1 meeting to transcribe") && html.includes('data-action="transcribe"'));
+  assert.ok(html.includes("1 to-do from meetings needs a tag"));
 });
 
-test("taskDetailHtml renders a context select with the task's context selected", () => {
-  const t = { text: "x", file: "f.md", line_text: "x", project: "P", context: "#phone", due: null };
-  const html = L.taskDetailHtml(t, "2026-09-10");
-  assert.match(html, /<select id="detail-context">/);
-  assert.match(html, /<option value="phone" selected>phone<\/option>/);
-  assert.match(html, /<option value="unknown">unknown<\/option>/);
+test("empty lists say something kind instead of rendering nothing", () => {
+  const s = stateWith([]);
+  for (const v of L.LISTS.filter((x) => x !== "upcoming")) {
+    assert.ok(L.renderView(s, { view: v }, { today: TODAY, list: v }).includes('class="empty"'), v);
+  }
+  // Upcoming always shows the coming week, each day greyed while empty — as Things does
+  assert.equal((L.renderView(s, { view: "upcoming" }, { today: TODAY, list: "upcoming" }).match(/day-empty/g) || []).length, 7);
 });
 
-test("taskDetailHtml shows a meeting pill and 'Meeting' label for a task with no project but a meeting", () => {
-  const t = { text: "Email the vendor", file: "Meetings/2026-09-10 Sync.md", line_text: "x",
-    project: null, meeting: "2026-09-10 Sync", context: "#unknown", due: null };
-  const html = L.taskDetailHtml(t, "2026-09-10");
-  assert.match(html, />Meeting<\/span>/);
-  assert.match(html, /meeting-open" data-file="Meetings\/2026-09-10 Sync\.md"/);
-  assert.doesNotMatch(html, /none — inbox capture/);
+test("a pending delete hides the to-do everywhere until Undo expires", () => {
+  const t = todo({ text: "gone", when: TODAY });
+  const pending = { [L.taskKey(t.file, t.line_text)]: 1 };
+  assert.equal(L.listToday(stateWith([t]), TODAY, pending).day.length, 0);
 });
 
-test("taskLine shows a meeting pill when the task has no project but has a meeting", () => {
-  // #unknown tasks live only in the Needs-triage card (renderTasksByContext's ctxOrder excludes
-  // "#unknown" by design — see the renderNeedsTriage tests below), so this exercises taskLine's
-  // meeting-pill behavior through a normal, already-triaged context instead.
-  const t = { text: "Email the vendor", file: "Meetings/2026-09-10 Sync.md",
-    line_text: "- [ ] Email the vendor #next #computer", project: null, meeting: "2026-09-10 Sync" };
-  const html = L.render(
-    { inbox_count: 0, tasks_by_context: { "#computer": [t] }, waiting: [], due_soon: [],
-      active_projects: [], someday_projects: [] },
-    "", "2026-09-10"
-  ).tasksHtml;
-  assert.match(html, /meeting-open" data-file="Meetings\/2026-09-10 Sync\.md"/);
+test("project pages group to-dos by the note's headings and hide logged items behind a toggle", () => {
+  const s = stateWith([
+    todo({ text: "task-build", project: "P", heading: "Build" }), todo({ text: "task-design", project: "P", heading: "Design" }),
+    todo({ text: "task-top", project: "P", heading: null }), todo({ text: "task-logged", project: "P", done: true }),
+  ], { projects: [{ name: "P", status: "active", headings: ["Design", "Build"], open: 3, done: 1, review_overdue: true }] });
+  const html = L.renderView(s, { view: "project", name: "P" }, { today: TODAY, list: "project" });
+  const order = ["task-top", ">Design<", "task-design", ">Build<", "task-build"].map((x) => html.indexOf(x));
+  assert.ok(order.every((i) => i >= 0));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  assert.ok(html.includes("Show 1 logged item") && !html.includes("task-logged"));
+  assert.ok(html.includes("Mark as reviewed"));
+  assert.ok(L.renderView(s, { view: "project", name: "P" }, { today: TODAY, list: "project", showLogged: true }).includes("task-logged"));
 });
 
-test("renderNeedsTriage lists every #unknown-context task", () => {
-  const state = { tasks_by_context: { "#unknown": [
-    { text: "Email the vendor", file: "Meetings/x.md", line_text: "x", project: null, meeting: "Sync" },
-  ] } };
-  const html = L.renderNeedsTriage(state, "2026-09-10");
-  assert.match(html, /Email the vendor/);
-  assert.match(html, /meeting-open" data-file="Meetings\/x\.md"/);
+test("the sidebar counts Inbox and Today, badges deadlines, and nests projects under areas", () => {
+  const s = stateWith([
+    todo({ text: "i", inbox: true }), todo({ text: "due", deadline: TODAY }), todo({ text: "sched", when: TODAY }),
+    todo({ text: "w", status: "waiting" }),
+  ], { inbox_notes: [{ file: "00 Inbox/n.md", text: "n" }], areas: [{ name: "Work", file: null }],
+    projects: [{ name: "Site", area: "Work", status: "active", open: 1, done: 1 }, { name: "Loose", status: "active" },
+      { name: "Idea", status: "someday" }] });
+  assert.deepEqual(L.sidebarCounts(s, TODAY), { inbox: 2, today: 2, todayDue: 1, waiting: 1 });
+  const html = L.sidebarHtml(s, { view: "project", name: "Site" }, TODAY);
+  assert.ok(html.indexOf("Loose") < html.indexOf("Work") && html.indexOf("Work") < html.indexOf("Site"));
+  assert.ok(!html.includes("Idea"), "someday projects live in Someday, not the sidebar");
+  assert.ok(/sb-project current/.test(html) && html.includes("--p:50"));
+  assert.ok(html.includes('class="badge">1<'));
 });
 
-test("renderNeedsTriage shows an empty state when nothing needs triage", () => {
-  const html = L.renderNeedsTriage({ tasks_by_context: {} }, "2026-09-10");
-  assert.equal(html, '<p class="empty">Nothing to triage.</p>');
+test("Quick Find matches lists, projects, tags and to-dos, and knows where each lives", () => {
+  const s = stateWith([todo({ text: "Call the bank", context: "phone", project: "Money" })],
+    { projects: [{ name: "Money", status: "active" }] });
+  const r = L.quickFind(s, "mon", TODAY);
+  assert.deepEqual(r.map((x) => x.kind + ":" + x.label), ["project:Money", "todo:Call the bank"]);
+  assert.deepEqual(r[1].route, { view: "project", name: "Money" });
+  assert.deepEqual(L.quickFind(s, "phone", TODAY).map((x) => x.kind), ["tag"]);
+  assert.deepEqual(L.quickFind(s, "upc", TODAY)[0].route, { view: "upcoming" });
+  assert.equal(L.quickFind(s, "  ", TODAY).length, 0);
+  assert.ok(L.quickFindHtml(L.quickFind(s, "<", TODAY), 0) === "");
 });
 
-
-test("obsidianUrl addresses a note by vault name and vault-relative path", () => {
-  assert.equal(L.obsidianUrl("second brain", "Meetings/2026-09-10 Sync.md"),
-    "obsidian://open?vault=second%20brain&file=Meetings%2F2026-09-10%20Sync.md");
+test("the When popover's calendar stars today and won't offer past days", () => {
+  const html = L.calendarGrid("2026-09", TODAY, "2026-10-02");
+  assert.ok(html.includes("September 2026"));
+  assert.ok(!html.includes('data-date="2026-09-28"'));
+  assert.ok(/data-date="2026-09-29">.*i-today/.test(html));
+  assert.ok(html.includes('cal-day other sel" data-date="2026-10-02"'));
 });
 
-test("projectDetailHtml links to the note by vault name, not a relative path", () => {
-  const p = { name: "Website Redesign", file: "10 Projects/Website Redesign.md", review: null, outcome: null };
-  const html = L.projectDetailHtml(p, [], "2026-09-10", "second-brain");
-  assert.match(html, /href="obsidian:\/\/open\?vault=second-brain&amp;file=10%20Projects%2FWebsite%20Redesign\.md"/);
+test("Move offers the inbox, loose projects, and each area with its projects", () => {
+  const s = stateWith([], { areas: [{ name: "Home", file: "20 Areas/Home.md" }, { name: "Work", file: null }],
+    projects: [{ name: "Garage", area: "Home" }, { name: "Solo" }] });
+  assert.deepEqual(L.moveTargets(s).map((m) => m.kind + ":" + m.name), ["inbox:Inbox", "project:Solo", "area:Home", "project:Garage"]);
+  assert.ok(L.movePopoverHtml(s, "gar").includes("Garage") && !L.movePopoverHtml(s, "gar").includes("Solo"));
 });
-
-test("taskLine shows a chip for each linked note, e.g. the person you're waiting on", () => {
-  const out = L.render({ inbox_count: 0, tasks_by_context: {}, due_soon: [], active_projects: [], someday_projects: [],
-    waiting: [{ text: "Logo files", file: "f.md", line_text: "x", project: "Website Redesign", links: ["Design <Agency>"] }] },
-    "", "2026-09-10");
-  assert.match(out.waitingHtml, /class="link-chip">Design &lt;Agency&gt;</);
-});
-
-test("render shows an Undo row in place of a task whose delete is pending", () => {
-  const t = { text: "Call hosting provider", file: "f.md", line_text: "- [ ] Call hosting provider #next #phone", project: "P" };
-  const state = { inbox_count: 0, tasks_by_context: { "#phone": [t] }, waiting: [], due_soon: [],
-    active_projects: [], someday_projects: [] };
-  const pending = {};
-  pending[L.taskKey(t.file, t.line_text)] = true;
-  const out = L.render(state, "", "2026-09-10", pending);
-  assert.match(out.tasksHtml, /class="task-undo"/);
-  assert.doesNotMatch(out.tasksHtml, /class="task-check"/);
-});
-
-test("search also filters Waiting and the Today page, matching linked names", () => {
-  const state = { inbox_count: 0, tasks_by_context: {}, active_projects: [], someday_projects: [],
-    waiting: [
-      { text: "Logo files", file: "f.md", line_text: "a", links: ["Design Agency"] },
-      { text: "Figures", file: "f.md", line_text: "b", links: ["Sam Rivera"] },
-    ],
-    due_soon: [{ text: "Pay invoice", file: "f.md", line_text: "c", due: "2026-09-12" }],
-  };
-  const out = L.render(state, "agency", "2026-09-10");
-  assert.match(out.waitingHtml, /Logo files/);
-  assert.doesNotMatch(out.waitingHtml, /Figures/);
-  assert.doesNotMatch(out.todayHtml, /Pay invoice/);
-  assert.match(out.todayHtml, /No due tasks match your search/);
-  assert.equal(out.tabs.waiting.count, 1);
-  assert.equal(out.tabs.today.count, 0);
-});
-
-
-
-test("render omits the Needs-triage section when nothing needs triage", () => {
-  const state = {
-    inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [],
-    active_projects: [], someday_projects: [],
-  };
-  const out = L.render(state, "", "2026-09-10");
-  assert.doesNotMatch(out.tasksHtml, /Needs triage/);
-});
-
-test("the Tasks page puts #unknown tasks in a Needs-triage section above the contexts", () => {
-  const state = { inbox_count: 0, waiting: [], due_soon: [], active_projects: [], someday_projects: [],
-    tasks_by_context: {
-      "#unknown": [{ text: "Email the vendor", file: "Meetings/x.md", line_text: "u", meeting: "Sync" }],
-      "#phone": [{ text: "Call Sam", file: "f.md", line_text: "p" }],
-    } };
-  const html = L.render(state, "", "2026-09-10").tasksHtml;
-  assert.ok(html.indexOf("Needs triage") < html.indexOf("Call Sam"));
-  assert.match(html, /Email the vendor/);
-});
-
-test("dueLabel says today/tomorrow/weekday inside a week, and the ISO date otherwise", () => {
-  const today = "2026-09-11"; // a Friday
-  assert.equal(L.dueLabel("2026-09-11", today), "today");
-  assert.equal(L.dueLabel("2026-09-12", today), "tomorrow");
-  assert.equal(L.dueLabel("2026-09-14", today), "Mon");
-  assert.equal(L.dueLabel("2026-09-17", today), "Thu");
-  assert.equal(L.dueLabel("2026-09-18", today), "2026-09-18"); // a week out: weekday would be ambiguous
-  assert.equal(L.dueLabel("2026-09-01", today), "2026-09-01"); // overdue keeps its date
-  assert.equal(L.dueLabel("someday", today), "someday");        // unparseable text passes through
-  assert.equal(L.dueLabel(null, today), "");
-});
-
-test("bucketDue splits due-soon tasks into overdue, today and this week, each sorted by date", () => {
-  const b = L.bucketDue([
-    { text: "c", due: "2026-09-15" }, { text: "a", due: "2026-09-02" }, { text: "t", due: "2026-09-11" },
-    { text: "b", due: "2026-09-12" }, { text: "z", due: "2026-09-01" },
-  ], "2026-09-11");
-  assert.deepEqual(b.overdue.map((t) => t.text), ["z", "a"]);
-  assert.deepEqual(b.today.map((t) => t.text), ["t"]);
-  assert.deepEqual(b.week.map((t) => t.text), ["b", "c"]);
-});
-
-test("attentionItems covers inbox, triage, reviews, meetings, waiting and undated next actions", () => {
-  const due = { text: "Wireframe", file: "f.md", line_text: "w", due: "2026-09-12" };
-  const state = {
-    inbox_count: 2,
-    tasks_by_context: {
-      "#computer": [due, { text: "Email", file: "f.md", line_text: "e" }],
-      "#phone": [{ text: "Call", file: "f.md", line_text: "c" }],
-      "#unknown": [{ text: "?", file: "m.md", line_text: "u" }],
-    },
-    due_soon: [due],
-    waiting: [{ text: "Logo", file: "f.md", line_text: "l" }],
-    active_projects: [
-      { name: "Trip", review: "2026-09-01", review_overdue: true },
-      { name: "Site", review: "2026-09-15", review_overdue: false },
-      { name: "Later", review: "2026-10-30", review_overdue: false },
-    ],
-    meetings: [
-      { name: "A", transcription_status: "pending" },
-      { name: "B", transcription_status: "done", summary_status: "pending" },
-      { name: "C", transcription_status: "done", summary_status: "done" },
-      { name: "D", transcription_status: null },
-    ],
-  };
-  const items = L.attentionItems(state, "2026-09-11");
-  const byKey = Object.fromEntries(items.map((a) => [a.key, a]));
-  assert.equal(byKey.inbox.text, "2 inbox items to process");
-  assert.equal(byKey.inbox.page, "inbox");
-  assert.equal(byKey["mtg-transcribe"].action, "transcribe");
-  assert.match(byKey["mtg-summarize"].hint, /gtd-summarize-meetings/);
-  assert.equal(byKey.triage.page, "tasks");
-  assert.equal(byKey["review|Trip"].alert, true);
-  assert.equal(byKey["review|Site"].text, "Site: review due Tue");
-  assert.equal(byKey["review|Site"].alert, false);
-  assert.equal(byKey["review|Later"], undefined);
-  assert.equal(byKey["mtg-transcribe"].text, "1 meeting to transcribe");
-  assert.equal(byKey["mtg-summarize"].text, "1 meeting to summarize");
-  assert.equal(byKey["mtg-failed"], undefined);
-  assert.equal(byKey.waiting.page, "waiting");
-  // the due task is already on the Today page, so only the two undated ones count here
-  assert.equal(byKey.next.text, "2 other next actions — computer 1 · phone 1");
-});
-
-test("the Today page shows only non-empty groups and says so when nothing is due", () => {
-  const empty = { inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [], active_projects: [], someday_projects: [] };
-  const html = L.render(empty, "", "2026-09-11").todayHtml;
-  assert.match(html, /Nothing due this week\./);
-  assert.doesNotMatch(html, /Overdue|Due today|This week<|Needs attention|On your lists/);
-
-  const busy = { ...empty, inbox_count: 1,
-    due_soon: [{ text: "Pay rent", file: "f.md", line_text: "r", due: "2026-09-11" }] };
-  const html2 = L.render(busy, "", "2026-09-11").todayHtml;
-  assert.match(html2, /Due today<\/h2>.*Pay rent/);
-  assert.doesNotMatch(html2, /Overdue|This week</);
-  assert.match(html2, /Needs attention<\/h2>.*1 inbox item to process/);
-});
-
-test("tabInfo flags overdue work, triage and overdue reviews", () => {
-  const state = { inbox_count: 0, waiting: [], someday_projects: [],
-    tasks_by_context: { "#home": [{ text: "Fix tap", file: "f.md", line_text: "t", due: "2026-09-01" }] },
-    due_soon: [{ text: "Fix tap", file: "f.md", line_text: "t", due: "2026-09-01" }],
-    active_projects: [{ name: "Trip", review_overdue: true }],
-    meetings: [{ name: "A", transcription_status: "failed" }] };
-  const info = L.tabInfo(state, "", "2026-09-11");
-  assert.equal(info.today.alert, true);
-  assert.equal(info.tasks.alert, true);
-  assert.equal(info.waiting.alert, false);
-  assert.equal(info.projects.alert, true);
-});
-
-test("renderTabs numbers the pages, marks the current one and shows alert dots", () => {
-  const info = { today: { count: 1, alert: true }, tasks: { count: 3, alert: false },
-    waiting: { count: 0, alert: false }, projects: { count: 2, alert: false }, inbox: { count: 0, alert: false },
-    week: { count: 0, alert: false } };
-  const html = L.renderTabs(info, "tasks");
-  assert.match(html, /href="#today" class="tab"><kbd>1<\/kbd>Today <span class="tab-n">1<\/span><span class="dot"/);
-  assert.match(html, /href="#tasks" class="tab current" aria-current="page"><kbd>3<\/kbd>Tasks/);
-  assert.equal((html.match(/class="dot"/g) || []).length, 1);
-});
-
-test("every navigable row carries a stable data-key", () => {
-  const t = { text: "Call", file: "f.md", line_text: "- [ ] Call #next #phone" };
-  const state = { inbox_count: 0, waiting: [], due_soon: [], someday_projects: [],
-    tasks_by_context: { "#phone": [t] }, active_projects: [{ name: "Site" }],
-    inbox_items: [{ file: "00 Inbox/a.md", text: "Idea", captured: "2026-09-11" }] };
-  const out = L.render(state, "", "2026-09-11");
-  assert.match(out.tasksHtml, /class="task nav-item" data-key="f\.md\|- \[ \] Call #next #phone"/);
-  assert.match(out.projectsHtml, /class="nav-item" data-key="proj\|Site"/);
-  assert.match(out.inboxHtml, /class="nav-item" data-key="inbox\|00 Inbox\/a\.md"/);
-});
-
-test("search filters projects and inbox items", () => {
-  const state = { inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [],
-    active_projects: [{ name: "Website Redesign" }, { name: "Plan Family Trip" }],
-    someday_projects: [{ name: "Learn Spanish" }],
-    inbox_items: [{ file: "00 Inbox/a.md", text: "Buy trip insurance" }, { file: "00 Inbox/b.md", text: "Idea" }] };
-  const out = L.render(state, "trip", "2026-09-11");
-  assert.match(out.projectsHtml, /Plan Family Trip/);
-  assert.doesNotMatch(out.projectsHtml, /Website Redesign|Learn Spanish/);
-  assert.match(out.inboxHtml, /Buy trip insurance/);
-  assert.doesNotMatch(out.inboxHtml, /Idea/);
-  assert.equal(out.tabs.inbox.count, 1);
-  assert.equal(out.tabs.projects.count, 1);
-});
-
-const keyEv = (o) => Object.assign({ key: "", code: "", shiftKey: false, ctrlKey: false, metaKey: false, altKey: false }, o);
 
 test("keyAction maps shortcuts by physical key, so a Hebrew layout works too", () => {
-  assert.equal(L.keyAction(keyEv({ key: "j", code: "KeyJ" })), "down");
-  assert.equal(L.keyAction(keyEv({ key: "ח", code: "KeyJ" })), "down");
-  assert.equal(L.keyAction(keyEv({ key: "ל", code: "KeyK" })), "up");
-  assert.equal(L.keyAction(keyEv({ key: "י", code: "KeyH" })), "left");
-  assert.equal(L.keyAction(keyEv({ key: "ך", code: "KeyL" })), "right");
-  assert.equal(L.keyAction(keyEv({ key: "ס", code: "KeyX" })), "complete");
-  assert.equal(L.keyAction(keyEv({ key: "ג", code: "KeyD" })), "delete");
-  assert.equal(L.keyAction(keyEv({ key: "ו", code: "KeyU" })), "undo");
-  assert.equal(L.keyAction(keyEv({ key: "מ", code: "KeyN" })), "new");
-  assert.equal(L.keyAction(keyEv({ key: "ר", code: "KeyR" })), "record");
-  assert.equal(L.keyAction(keyEv({ key: ".", code: "Slash" })), "search"); // the "/" key under Hebrew
-  assert.equal(L.keyAction(keyEv({ key: "?", code: "Slash", shiftKey: true })), "help");
-  assert.equal(L.keyAction(keyEv({ key: "3", code: "Digit3" })), "page:3");
-  assert.equal(L.keyAction(keyEv({ key: "3", code: "Numpad3" })), "page:3");
-  assert.equal(L.keyAction(keyEv({ key: "ArrowDown", code: "ArrowDown" })), "down");
-  assert.equal(L.keyAction(keyEv({ key: "ArrowRight", code: "ArrowRight" })), "right");
-  assert.equal(L.keyAction(keyEv({ key: "Enter", code: "Enter" })), "open");
+  const k = (code, key, extra) => L.keyAction(Object.assign({ code, key: key || "" }, extra));
+  assert.equal(k("KeyJ", "ח"), "down");
+  assert.equal(k("KeyT", "א"), "when:today");
+  assert.equal(k("KeyE", "ק"), "when:evening");
+  assert.equal(k("KeyS", "ד"), "when:someday");
+  assert.equal(k("KeyM", "צ"), "move");
+  assert.equal(k("Space", " "), "new");
+  assert.equal(k("Digit7", "7"), "list:7");
+  assert.equal(k("Slash", "."), "search");
+  assert.equal(k("Slash", "?", { shiftKey: true }), "help");
+  assert.equal(k("Backspace", "Backspace"), "delete");
+  assert.equal(k("KeyJ", "j", { ctrlKey: true }), null);
+  assert.equal(k("KeyQ", "q"), null);
 });
 
-test("keyAction ignores modified and unmapped keys", () => {
-  assert.equal(L.keyAction(keyEv({ key: "j", code: "KeyJ", ctrlKey: true })), null);
-  assert.equal(L.keyAction(keyEv({ key: "J", code: "KeyJ", shiftKey: true })), null);
-  assert.equal(L.keyAction(keyEv({ key: "q", code: "KeyQ" })), null);
-});
-
-test("task text is marked dir=auto so Hebrew renders right-to-left", () => {
-  const html = L.render({ inbox_count: 0, waiting: [], due_soon: [], active_projects: [], someday_projects: [],
-    tasks_by_context: { "#phone": [{ text: "להתקשר לאינסטלטור", file: "f.md", line_text: "x" }] } }, "", "2026-09-11").tasksHtml;
-  assert.match(html, /<span class="task-text" dir="auto">להתקשר לאינסטלטור/);
-  const detail = L.taskDetailHtml({ text: "שלום", file: "f.md", line_text: "x", context: "#phone" }, "2026-09-11");
-  assert.match(detail, /id="detail-text" value="שלום" dir="auto"/);
-});
-
-test("filterBannerHtml explains an active filter and how to clear it, escaping the query", () => {
-  assert.equal(L.filterBannerHtml(""), "");
-  const html = L.filterBannerHtml("<b>דוח</b>");
-  assert.match(html, /Showing matches for/);
-  assert.match(html, /&lt;b&gt;דוח&lt;\/b&gt;/);
-  assert.match(html, /class="filter-clear"/);
-  assert.match(html, /<kbd>Esc<\/kbd>/);
-});
-
-test("pickHorizontal moves to the level row in the nearest column, or stays put at the edge", () => {
-  const r = (left, top) => ({ left, right: left + 100, top, bottom: top + 20 });
-  // three columns (x = 0, 120, 240); column 2 has rows at y = 0 and 40, column 3 only at y = 0;
-  // a second grid row of columns starts at y = 200
-  const rects = [r(0, 0), r(0, 40), r(0, 80), r(120, 0), r(120, 40), r(240, 0), r(0, 200), r(120, 200)];
-  assert.equal(L.pickHorizontal(rects, 1, 1), 4);   // col 1 row 2 → col 2 row 2
-  assert.equal(L.pickHorizontal(rects, 2, 1), 4);   // col 1 row 3 → col 2's nearest row
-  assert.equal(L.pickHorizontal(rects, 4, 1), 5);   // → col 3 (only row)
-  assert.equal(L.pickHorizontal(rects, 5, 1), -1);  // right edge
-  assert.equal(L.pickHorizontal(rects, 3, -1), 0);  // back left
-  assert.equal(L.pickHorizontal(rects, 6, 1), 7);   // second grid row stays in its row
-  assert.equal(L.pickHorizontal(rects, 0, -1), -1); // left edge
-  // an indented full-width section above the columns (Needs triage) is not a column of its own
-  const withTriage = [{ left: 13, right: 600, top: -40, bottom: -20 }, r(0, 0), r(320, 0)];
-  assert.equal(L.pickHorizontal(withTriage, 1, 1), 2);
-  assert.equal(L.pickHorizontal(withTriage, 2, -1), 1);
-  assert.equal(L.pickHorizontal(withTriage, 0, 1), 2);
-});
-
-test("renderInbox lists captures with Obsidian links and says so when empty", () => {
-  const items = [{ file: "00 Inbox/2026-09-10 call-plumber.md", text: "להתקשר לאינסטלטור", captured: "2026-09-10" }];
-  const html = L.render({ inbox_count: 1, inbox_items: items, tasks_by_context: {}, waiting: [], due_soon: [],
-    active_projects: [], someday_projects: [], vault_name: "second-brain" }, "", "2026-09-11").inboxHtml;
-  assert.match(html, /href="obsidian:\/\/open\?vault=second-brain&amp;file=00%20Inbox%2F2026-09-10%20call-plumber\.md" dir="auto">להתקשר לאינסטלטור/);
-  assert.match(html, /2026-09-10/);
-  assert.match(html, /gtd-process-inbox/);
-  const empty = L.render({ inbox_count: 0, inbox_items: [], tasks_by_context: {}, waiting: [], due_soon: [],
-    active_projects: [], someday_projects: [] }, "", "2026-09-11").inboxHtml;
-  assert.match(empty, /Inbox zero/);
-});
-
-test("a pending-transcription attention item is an action link", () => {
-  const html = L.render({ inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [], active_projects: [],
-    someday_projects: [], meetings: [{ name: "A", transcription_status: "pending" }] }, "", "2026-09-11").todayHtml;
-  assert.match(html, /<a href="#" class="att-run" data-action="transcribe">1 meeting to transcribe<\/a>/);
-});
-
-const CAL = { status: "ok", error: null, events: [
-  { subject: "Holiday", start: "2026-09-11T00:00", end: "2026-09-12T00:00", date: "2026-09-11", all_day: true, location: "", attendees: "" },
-  { subject: "סנכרון שבועי", start: "2026-09-11T09:30", end: "2026-09-11T10:00", date: "2026-09-11", all_day: false, location: "Room 1", attendees: "Dana; Omer" },
-  { subject: "Planning", start: "2026-09-11T14:00", end: "2026-09-11T15:00", date: "2026-09-11", all_day: false, location: "", attendees: "" },
-  { subject: "Tomorrow thing", start: "2026-09-12T09:00", end: "2026-09-12T09:30", date: "2026-09-12", all_day: false, location: "", attendees: "" },
-] };
-const BASE = { inbox_count: 0, tasks_by_context: {}, waiting: [], due_soon: [], active_projects: [], someday_projects: [] };
-
-test("the Today page lists today's meetings first, with times, dimming ones that are over", () => {
-  const html = L.render({ ...BASE, calendar: CAL }, "", "2026-09-11", {}, "2026-09-11T12:00").todayHtml;
-  assert.ok(html.indexOf("Meetings today") < html.indexOf("Nothing due this week"));
-  assert.match(html, /<span class="ev-time">all day<\/span><span class="ev-subject" dir="auto">Holiday/);
-  assert.match(html, /class="event nav-item event-past"[^>]*data-subject="סנכרון שבועי" data-attendees="Dana; Omer"/);
-  assert.match(html, /<span class="ev-time">09:30–10:00<\/span>/);
-  assert.match(html, /<span class="ev-loc" dir="auto">Room 1<\/span>/);
-  assert.match(html, /class="event nav-item"[^>]*data-subject="Planning"/);
-  assert.doesNotMatch(html, /Tomorrow thing/);
-});
-
-test("the Today page says when the Outlook calendar is loading or unavailable, and nothing when off", () => {
-  const load = L.render({ ...BASE, calendar: { status: "loading", events: [] } }, "", "2026-09-11").todayHtml;
-  assert.match(load, /Loading your Outlook calendar/);
-  const down = L.render({ ...BASE, calendar: { status: "unavailable", error: "Outlook is not running", events: [] } }, "", "2026-09-11").todayHtml;
-  assert.match(down, /Outlook calendar unavailable — Outlook is not running/);
-  const off = L.render({ ...BASE, calendar: { status: "off", events: [] } }, "", "2026-09-11").todayHtml;
-  assert.doesNotMatch(off, /Outlook/);
-});
-
-test("search filters today's meetings by subject", () => {
-  const html = L.render({ ...BASE, calendar: CAL }, "plan", "2026-09-11").todayHtml;
-  assert.match(html, /Planning/);
-  assert.doesNotMatch(html, /Holiday/);
-});
-
-test("localDateTime formats local time without a timezone", () => {
-  assert.equal(L.localDateTime(new Date(2026, 8, 11, 9, 5, 7)), "2026-09-11T09:05:07");
-});
-
-test("the Week page has a column per day with that day's meetings and due tasks", () => {
-  const state = { ...BASE, calendar: CAL, due_soon: [
-    { text: "Late one", file: "f.md", line_text: "a", due: "2026-09-09" },
-    { text: "Pay rent", file: "f.md", line_text: "b", due: "2026-09-12" },
-    { text: "Next week", file: "f.md", line_text: "c", due: "2026-09-18" },
-  ] };
-  const html = L.render(state, "", "2026-09-11", {}, "2026-09-11T08:00").weekHtml;
-  const heads = [...html.matchAll(/<div class="ctx-h">([^<]*)<\/div>/g)].map((m) => m[1]);
-  // exactly the 7 days: an Overdue column made the grid wrap and pushed half the week off-screen
-  assert.deepEqual(heads, ["Today · Fri 11 Sep", "Tomorrow · Sat 12 Sep", "Sun 13 Sep", "Mon 14 Sep",
-    "Tue 15 Sep", "Wed 16 Sep", "Thu 17 Sep"]);
-  const sat = html.slice(html.indexOf("Tomorrow · Sat"), html.indexOf("Sun 13 Sep"));
-  assert.match(sat, /Tomorrow thing/);
-  assert.match(sat, /Pay rent/);
-  assert.doesNotMatch(html, /Next week/); // a week out: not on this 7-day page
-  assert.doesNotMatch(html, /Late one/);  // overdue tasks live on Today…
-  assert.match(html, /<a href="#today">1 overdue task<\/a> — on the Today page/); // …and the Week page says so
-  assert.match(html, /Nothing scheduled/);
-});
-
-test("the Week page has no Overdue column when nothing is overdue, and counts the week's tasks", () => {
-  const state = { ...BASE, due_soon: [{ text: "Pay rent", file: "f.md", line_text: "b", due: "2026-09-12" }] };
-  const out = L.render(state, "", "2026-09-11");
-  assert.doesNotMatch(out.weekHtml, />Overdue</);
-  assert.deepEqual(out.tabs.week, { count: 1, alert: false });
+test("attentionItems covers triage, overdue reviews and meeting follow-ups", () => {
+  const s = stateWith([todo({ context: "unknown" })], {
+    projects: [{ name: "A", review_overdue: true }, { name: "B", review_overdue: true }],
+    meetings: [{ transcription_status: "failed" }, { transcription_status: "done", summary_status: "pending" }],
+  });
+  const items = L.attentionItems(s, TODAY);
+  assert.deepEqual(items.map((a) => a.key), ["triage", "review", "mtg-summarize", "mtg-failed"]);
+  assert.equal(items[0].tag, "unknown");
+  assert.equal(items[1].text, "2 projects due for review");
 });
 
 test("currentEvent picks the timed meeting under way or starting within 10 minutes", () => {
-  assert.equal(L.currentEvent(CAL, "2026-09-11T09:25").subject, "סנכרון שבועי");
-  assert.equal(L.currentEvent(CAL, "2026-09-11T09:45").subject, "סנכרון שבועי");
-  assert.equal(L.currentEvent(CAL, "2026-09-11T10:00"), null); // over; the all-day Holiday never counts
-  assert.equal(L.currentEvent(CAL, "2026-09-11T13:55").subject, "Planning");
-  assert.equal(L.currentEvent({ status: "off", events: [] }, "2026-09-11T09:30"), null);
+  const cal = { events: [
+    { date: TODAY, start: TODAY + "T09:00:00", end: TODAY + "T09:30:00", subject: "early", all_day: false },
+    { date: TODAY, start: TODAY + "T10:05:00", end: TODAY + "T11:00:00", subject: "soon", all_day: false },
+  ] };
+  assert.equal(L.currentEvent(cal, TODAY + "T09:10").subject, "early");
+  assert.equal(L.currentEvent(cal, TODAY + "T09:58").subject, "soon");
+  assert.equal(L.currentEvent(cal, TODAY + "T12:00"), null);
 });
 
 test("recordingUrl encodes a Hebrew title and attendees for the upload", () => {
-  assert.equal(L.recordingUrl({ started: "2026-09-11T14:00:05", title: "", attendees: "" }),
-    "/api/record-meeting?started=2026-09-11T14%3A00%3A05");
-  assert.equal(L.recordingUrl({ started: "2026-09-11T14:00:05", title: "סנכרון", attendees: "Dana; Omer" }),
-    "/api/record-meeting?started=2026-09-11T14%3A00%3A05&title=%D7%A1%D7%A0%D7%9B%D7%A8%D7%95%D7%9F&attendees=Dana%3B%20Omer");
+  const url = L.recordingUrl({ started: "2026-09-29T10:00:00", title: "פגישה", attendees: "Dana" });
+  assert.equal(url, "/api/record-meeting?started=2026-09-29T10%3A00%3A00&title=%D7%A4%D7%92%D7%99%D7%A9%D7%94&attendees=Dana");
 });
 
-test("pickHorizontal can aim at a remembered height, so h then l lands back on the same row", () => {
-  const r = (left, top) => ({ left, right: left + 100, top, bottom: top + 20 });
-  // column A is long, column B short: A row at y=400 → l → B's last row (y=40) → h should return to y=400
-  const rects = [r(0, 0), r(0, 200), r(0, 400), r(160, 0), r(160, 40)];
-  assert.equal(L.pickHorizontal(rects, 2, 1), 4);
-  assert.equal(L.pickHorizontal(rects, 4, -1), 0);          // without a goal: nearest to y=40
-  assert.equal(L.pickHorizontal(rects, 4, -1, 410), 2);     // with the remembered y: back to row 3
-});
-
-test("more than 3 overdue project reviews collapse into one line pointing at Projects", () => {
-  const projects = ["A", "B", "C", "D", "E"].map((n) => ({ name: n, review: "2026-09-01", review_overdue: true }));
-  const items = L.attentionItems({ ...BASE, active_projects: projects }, "2026-09-11");
-  const reviews = items.filter((a) => /review/.test(a.text));
-  assert.deepEqual(reviews.map((a) => [a.text, a.page, a.alert]), [["5 project reviews overdue", "projects", true]]);
-  const few = L.attentionItems({ ...BASE, active_projects: projects.slice(0, 3) }, "2026-09-11");
-  assert.equal(few.filter((a) => /review overdue/.test(a.text)).length, 3); // up to 3 stay individual
-});
-
-test("search filters Today's attention and reminder lines too", () => {
-  const state = { ...BASE, inbox_count: 141, waiting: [{ text: "Logo", file: "f.md", line_text: "l" }],
-    active_projects: [{ name: "Copenhagen trip", review_overdue: true }] };
-  const html = L.render(state, "copenhagen", "2026-09-11").todayHtml;
-  assert.match(html, /Copenhagen trip: review overdue/);
-  assert.doesNotMatch(html, /inbox items to process/);
-  assert.doesNotMatch(html, /waiting-for item/);
-});
-
-test("the Today page says 'No meetings today' when the calendar is connected but empty", () => {
-  const html = L.render({ ...BASE, calendar: { status: "ok", events: [] } }, "", "2026-09-11").todayHtml;
-  assert.match(html, /No meetings today/);
-  const searching = L.render({ ...BASE, calendar: { status: "ok", events: [] } }, "x", "2026-09-11").todayHtml;
-  assert.doesNotMatch(searching, /No meetings today/);
+test("localDateTime formats local time without a timezone", () => {
+  assert.equal(L.localDateTime(new Date(2026, 8, 29, 7, 5, 9)), "2026-09-29T07:05:09");
 });

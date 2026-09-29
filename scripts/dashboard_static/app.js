@@ -1,104 +1,133 @@
-// scripts/dashboard_static/app.js
+// scripts/dashboard_static/app.js — the page's behaviour; what to draw comes from logic.js.
 (function () {
+  var L = DashboardLogic;
   var POLL_MS = 4000;
   var UNDO_MS = 5000;
-  var PAGES = DashboardLogic.PAGES;
+  var CHECK_MS = 900; // a ticked box lingers this long (and can be unticked) before it's logged
+
   var state = null;
-  var query = "";
-  var page = pageFromHash();
-  var pendingDeletes = {}; // taskKey -> timeout id; the file is only touched once the undo window closes
-  var deleteOrder = [];    // [{file, line}] oldest first, so `u` undoes the most recent delete
-  var sel = { key: null, index: -1 }; // keyboard selection on the current page; -1 = none
-  var transcribing = null; // null | "running" | "failed" — shown on Today's transcribe item
+  var route = L.parseRoute(location.hash);
+  var sel = { key: null, index: -1 };
+  var expanded = null;   // taskKey of the open to-do card, or "new" while creating one
+  var draft = null;      // the open card's title as typed, until it's saved
+  var creating = null;   // the new to-do's fields while its card is open
+  var tagFilter = null;
+  var showLogged = false;
+  var pending = {};      // taskKey -> timer: deleted, but the file is only touched once Undo expires
+  var deleteOrder = [];  // [{key, file, line, text}] oldest first
+  var checking = {};     // taskKey -> timer: ticked, about to be completed
+  var transcribing = null;
+  var pop = null;        // open popover: {kind, target, month}
 
-  function today() {
-    var d = new Date();
-    var mm = String(d.getMonth() + 1).padStart(2, "0");
-    var dd = String(d.getDate()).padStart(2, "0");
-    return d.getFullYear() + "-" + mm + "-" + dd;
+  var touchOnly = !!(window.matchMedia && matchMedia("(hover: none)").matches);
+
+  var $ = function (id) { return document.getElementById(id); };
+  var viewEl = $("view"), navEl = $("sb-nav"), popEl = $("popover"), toastEl = $("toast");
+
+  function today() { return L.isoDate(new Date()); }
+  function nowMinute() { return L.localDateTime(new Date()).slice(0, 16); }
+
+  // ---- storage (a private window may refuse it; the page works the same without) ----
+
+  function store(k, v) {
+    try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { /* ignore */ }
+    return null;
   }
 
-  function pageFromHash() {
-    var h = location.hash.replace(/^#/, "");
-    return PAGES.indexOf(h) >= 0 ? h : "today";
-  }
-
-  function showPage(p) {
-    page = p;
-    sel = { key: null, index: -1 };
-    renderAll();
-    window.scrollTo(0, 0);
-  }
-
-  // Switch synchronously (hashchange fires later, which would drop a j/k typed right after the
-  // number key); the hash still updates so reload and Back keep you on the page.
-  function goTo(p) {
-    if (p === page) return;
-    showPage(p);
-    location.hash = p;
-  }
-
-  function applyTheme(theme) {
+  // Follows the system until you pick one with the ◐ button; only a pick is remembered.
+  function applyTheme(theme, remember) {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("dashboard-theme", theme);
+    if (remember) store("dashboard-theme", theme);
   }
 
-  // Rows scroll clear of the sticky header (see .nav-item scroll-margin in style.css).
-  function syncTopbarHeight() {
-    document.documentElement.style.setProperty("--topbar-h", document.querySelector(".topbar").offsetHeight + "px");
+  // ---- rendering ----
+
+  function viewOpts() {
+    return {
+      today: today(), now: nowMinute(), pending: pending, checking: checking, expanded: expanded,
+      draft: draft, creating: expanded === "new" ? creating : null, tag: tagFilter, showLogged: showLogged,
+      list: route.view,
+    };
+  }
+
+  // A native date picker or <select> closes if its element is redrawn, so wait until it's done.
+  function busyInput() {
+    var a = document.activeElement;
+    return a && viewEl.contains(a) && (a.tagName === "SELECT" || a.type === "date");
   }
 
   function renderAll() {
     if (!state) return;
-    var out = DashboardLogic.render(state, query, today(), pendingDeletes, DashboardLogic.localDateTime(new Date()).slice(0, 16));
-    document.getElementById("tabs").innerHTML = DashboardLogic.renderTabs(out.tabs, page);
-    document.getElementById("body-today").innerHTML = out.todayHtml;
-    document.getElementById("body-week").innerHTML = out.weekHtml;
-    document.getElementById("body-tasks").innerHTML = out.tasksHtml;
-    document.getElementById("body-waiting").innerHTML = out.waitingHtml;
-    document.getElementById("body-projects").innerHTML = out.projectsHtml;
-    document.getElementById("body-inbox").innerHTML = out.inboxHtml;
-    fillProjectChoices();
-    PAGES.forEach(function (p) {
-      document.getElementById("page-" + p).hidden = p !== page;
-    });
-    var banner = document.getElementById("filter-banner");
-    banner.innerHTML = DashboardLogic.filterBannerHtml(query);
-    banner.hidden = !query;
-    var run = transcribing && document.querySelector('.att-run[data-action="transcribe"]');
-    if (run) run.textContent = transcribing === "running" ? "Transcribing…" : "Transcription failed — Enter to retry";
+    if (expanded && expanded !== "new" && !findByKey(expanded)) { expanded = null; draft = null; }
+    navEl.innerHTML = L.sidebarHtml(state, route, today());
+    document.title = L.viewTitle(route) + " · Second Brain";
+    if (busyInput()) return;
+    var focus = document.activeElement && document.activeElement.classList.contains("card-title");
+    var caret = focus ? document.activeElement.selectionStart : null;
+    viewEl.innerHTML = L.renderView(state, route, viewOpts());
+    var run = document.querySelector('.att[data-action="transcribe"] .att-text');
+    if (run && transcribing) run.textContent = transcribing === "running" ? "Transcribing…" : "Transcription failed — Enter to retry";
+    if (focus) {
+      var t = viewEl.querySelector(".card-title");
+      if (t) { t.focus(); t.setSelectionRange(caret, caret); }
+    }
+    // the open to-do left this list (given a new When, say): it's closed, and its title was saved
+    if (expanded && !viewEl.querySelector(".todo-card")) { expanded = null; draft = null; }
     restoreSelection();
+    syncBar();
   }
 
-  function setQuery(q) {
-    query = q;
-    searchEl.value = q;
+  function findByKey(key) {
+    var i = key.indexOf("|");
+    return L.findTodo(state, key.slice(0, i), key.slice(i + 1));
+  }
+
+  // ---- routes ----
+
+  function navigate(r) {
+    closeCard();
+    closePop();
+    $("finder").hidden = true;
+    document.querySelector(".app").classList.remove("nav-open");
+    if (!L.sameRoute(r, route)) {
+      route = r;
+      tagFilter = null;
+      showLogged = false;
+      sel = { key: null, index: -1 };
+      var h = L.routeHash(r);
+      if (location.hash !== h) history.pushState(null, "", h);
+      $("scroll").scrollTop = 0;
+    }
     renderAll();
   }
 
-  // ---- keyboard selection ----
+  window.addEventListener("hashchange", function () { navigate(L.parseRoute(location.hash)); });
+  window.addEventListener("popstate", function () { navigate(L.parseRoute(location.hash)); });
+
+  // ---- selection ----
 
   function navItems() {
-    return Array.prototype.slice.call(document.querySelectorAll("#page-" + page + " .nav-item"));
+    return Array.prototype.slice.call(viewEl.querySelectorAll(".nav-item"));
   }
 
   function select(i, scroll) {
     var items = navItems();
     items.forEach(function (el) { el.classList.remove("selected"); });
-    if (!items.length || i < 0) { sel = { key: null, index: -1 }; return; }
+    if (!items.length || i < 0) { sel = { key: null, index: -1 }; syncBar(); return; }
     i = Math.min(i, items.length - 1);
     var el = items[i];
     el.classList.add("selected");
-    sel = { key: el.getAttribute("data-key"), index: i, goalY: null };
-    if (scroll) {
-      // the first row means "top of the page": show the section titles above it too
-      if (i === 0) window.scrollTo(0, 0);
-      else el.scrollIntoView({ block: "nearest" });
-    }
+    sel = { key: el.getAttribute("data-key"), index: i };
+    if (scroll) el.scrollIntoView({ block: "nearest" });
+    syncBar();
   }
 
-  // After a re-render, keep the same row selected; if it's gone (completed, deleted elsewhere),
-  // land on whatever now sits at its old position.
+  function selectKey(key, scroll) {
+    var keys = navItems().map(function (el) { return el.getAttribute("data-key"); });
+    if (keys.indexOf(key) >= 0) select(keys.indexOf(key), scroll);
+  }
+
+  // After a redraw keep the same row selected; if it left the list, land where it was.
   function restoreSelection() {
     if (sel.index < 0) return;
     var keys = navItems().map(function (el) { return el.getAttribute("data-key"); });
@@ -110,64 +139,49 @@
     return sel.index < 0 ? null : navItems()[sel.index] || null;
   }
 
+  function selectedTodo() {
+    var el = selectedEl();
+    if (!el || !el.classList.contains("todo") || el.hasAttribute("data-new")) return null;
+    return L.findTodo(state, el.getAttribute("data-file"), el.getAttribute("data-line"));
+  }
+
+  // the to-do an action applies to: the open card's, else the selected row's
+  function targetTodo() {
+    if (expanded === "new") return { isNew: true };
+    if (expanded) return findByKey(expanded);
+    return selectedTodo();
+  }
+
   function move(delta) {
     var items = navItems();
-    if (!items.length) return false;
-    select(sel.index < 0 ? (delta > 0 ? 0 : items.length - 1) : Math.max(0, sel.index + delta), true);
-    return true;
+    if (!items.length) return;
+    select(sel.index < 0 ? (delta > 0 ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, sel.index + delta)), true);
   }
 
-  function moveHorizontal(dir) {
-    var items = navItems();
-    if (!items.length) return false;
-    if (sel.index < 0) { select(0, true); return true; }
-    var rects = items.map(function (el) { return el.getBoundingClientRect(); });
-    var cur = rects[sel.index];
-    // aim for the height where this run of h/l presses started (page coordinates survive scrolling)
-    var goal = sel.goalY != null ? sel.goalY : (cur.top + cur.bottom) / 2 + window.scrollY;
-    var i = DashboardLogic.pickHorizontal(rects, sel.index, dir, goal - window.scrollY);
-    if (i >= 0) {
-      select(i, true);
-      sel.goalY = goal;
-    }
-    return true;
+  function syncBar() {
+    var t = expanded || (selectedEl() && selectedEl().classList.contains("todo"));
+    $("when-btn").disabled = !t;
+    $("move-btn").disabled = !t;
   }
 
-  function activate(el) {
-    if (el.classList.contains("task-pending")) {
-      undoDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
-    } else if (el.classList.contains("task")) {
-      openTaskDetail(el.getAttribute("data-file"), el.getAttribute("data-line"));
-    } else if (el.classList.contains("event")) {
-      toggleRecording({ subject: el.getAttribute("data-subject"), attendees: el.getAttribute("data-attendees") || "" });
-    } else {
-      var target = el.querySelector(".proj-open, a[href]");
-      if (target) target.click();
-    }
-  }
-
-  // ---- data ----
+  // ---- server ----
 
   var lastRaw = null, lastMinute = null;
 
-  // Redraw only when the vault (or the minute, which dims past meetings) changed — redrawing every
-  // poll made hover states flicker.
   function refresh() {
-    fetch("/api/state").then(function (r) { return r.text(); }).then(function (raw) {
-      var minute = DashboardLogic.localDateTime(new Date()).slice(0, 16);
+    return fetch("/api/state").then(function (r) { return r.text(); }).then(function (raw) {
+      var minute = nowMinute();
       if (raw === lastRaw && minute === lastMinute) return;
       lastRaw = raw;
       lastMinute = minute;
       state = JSON.parse(raw);
       renderAll();
-    });
+    }).catch(function () { /* server restarting; the next poll catches up */ });
   }
 
   function post(url, body) {
     return fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
         if (!r.ok) throw new Error(data.error || "request failed: " + r.status);
@@ -176,289 +190,585 @@
     });
   }
 
-  function completeTask(file, line) {
-    post("/api/complete-task", { file: file, line_text: line }).then(refresh).catch(refresh);
+  function fail(err) {
+    showToast("Couldn't save — " + (err && err.message ? err.message : "the note changed; try again"));
+    refresh();
+  }
+
+  // Edit a to-do; the open card and the selection follow it to its new line text.
+  function edit(t, fields) {
+    var oldKey = L.taskKey(t.file, t.line_text);
+    var body = { file: t.file, line_text: t.line_text };
+    Object.keys(fields).forEach(function (k) { body[k] = fields[k]; });
+    // a title typed into the open card rides along, in case this edit moves it off the list
+    if (expanded === oldKey && draft != null && draft.trim() && draft.trim() !== t.text && !body.new_text) {
+      body.new_text = draft.trim();
+      draft = null;
+    }
+    return post("/api/edit-task", body).then(function (res) {
+      var newKey = L.taskKey(t.file, res.line_text);
+      if (expanded === oldKey) expanded = newKey;
+      if (sel.key === oldKey) sel.key = newKey;
+      return refresh();
+    }).catch(fail);
+  }
+
+  // ---- the open to-do card ----
+
+  function openCard(t) {
+    closePop();
+    commitCard();
+    expanded = L.taskKey(t.file, t.line_text);
+    draft = null;
+    renderAll();
+    selectKey(expanded, true);
+    focusTitle();
+  }
+
+  function focusTitle() {
+    var input = viewEl.querySelector(".card-title");
+    if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  }
+
+  // Save the open card's title (Things saves as you close), then close it.
+  function commitCard() {
+    if (!expanded) return;
+    if (expanded === "new") {
+      var text = (draft || "").trim();
+      var c = creating;
+      expanded = null; draft = null; creating = null;
+      if (text) createTodo(text, c);
+      return;
+    }
+    var t = findByKey(expanded);
+    var text2 = draft;
+    expanded = null; draft = null;
+    if (t && text2 != null && text2.trim() && text2.trim() !== t.text) edit(t, { new_text: text2.trim() });
+  }
+
+  function closeCard() {
+    var key = expanded;
+    if (!key) return;
+    commitCard();
+    renderAll();
+    if (key !== "new") selectKey(key, false);
+    if (document.activeElement && viewEl.contains(document.activeElement)) document.activeElement.blur();
+  }
+
+  function startCreate() {
+    closePop();
+    commitCard();
+    creating = L.newTodoDefaults(route, today(), tagFilter);
+    expanded = "new";
+    draft = "";
+    sel = { key: null, index: -1 };
+    renderAll();
+    $("scroll").scrollTop = 0;
+    focusTitle();
+  }
+
+  function createTodo(text, c) {
+    var body = { text: text, context: c.context || "anywhere", project: c.project, area: c.area, deadline: c.deadline, status: c.status };
+    if (c.when) body.when = c.when;
+    post("/api/new-task", body).then(function (res) {
+      sel = { key: L.taskKey(res.file, res.line_text), index: 0 };
+      return refresh();
+    }).catch(fail);
+  }
+
+  // ---- complete / delete ----
+
+  function toggleCheck(file, line) {
+    var t = L.findTodo(state, file, line);
+    if (!t) return;
+    var key = L.taskKey(file, line);
+    if (t.done) {
+      post("/api/uncomplete-task", { file: file, line_text: line }).then(refresh).catch(fail);
+      return;
+    }
+    if (checking[key]) {
+      clearTimeout(checking[key]);
+      delete checking[key];
+    } else {
+      if (expanded === key) commitCard();
+      checking[key] = setTimeout(function () {
+        post("/api/complete-task", { file: file, line_text: line })
+          .then(function () { delete checking[key]; return refresh(); })
+          .catch(function (e) { delete checking[key]; fail(e); });
+      }, CHECK_MS);
+    }
+    renderAll();
+  }
+
+  function scheduleDelete(t) {
+    var key = L.taskKey(t.file, t.line_text);
+    if (pending[key]) return;
+    if (expanded === key) { expanded = null; draft = null; }
+    deleteOrder.push({ key: key, file: t.file, line: t.line_text, text: t.text });
+    pending[key] = setTimeout(function () {
+      post("/api/delete-task", { file: t.file, line_text: t.line_text })
+        .then(function () { forgetDelete(key); return refresh(); })
+        .catch(function (e) { forgetDelete(key); fail(e); });
+    }, UNDO_MS);
+    renderAll();
+    showUndo();
   }
 
   function forgetDelete(key) {
-    delete pendingDeletes[key];
-    deleteOrder = deleteOrder.filter(function (d) { return DashboardLogic.taskKey(d.file, d.line) !== key; });
+    delete pending[key];
+    deleteOrder = deleteOrder.filter(function (d) { return d.key !== key; });
+    showUndo();
   }
 
-  function scheduleDelete(file, line) {
-    var key = DashboardLogic.taskKey(file, line);
-    if (pendingDeletes[key]) return;
-    deleteOrder.push({ file: file, line: line });
-    pendingDeletes[key] = setTimeout(function () {
-      post("/api/delete-task", { file: file, line_text: line })
-        .then(function () { forgetDelete(key); refresh(); })
-        .catch(function () { forgetDelete(key); refresh(); });
-    }, UNDO_MS);
-    renderAll();
-  }
-
-  function undoDelete(file, line) {
-    var key = DashboardLogic.taskKey(file, line);
-    clearTimeout(pendingDeletes[key]);
-    forgetDelete(key);
-    renderAll();
-  }
-
-  function undoLastDelete() {
+  function undoDelete() {
     var last = deleteOrder[deleteOrder.length - 1];
-    if (last) undoDelete(last.file, last.line);
+    if (!last) return;
+    clearTimeout(pending[last.key]);
+    forgetDelete(last.key);
+    renderAll();
+    selectKey(last.key, true);
   }
 
-  function findTaskInState(file, line) {
-    var ctxKeys = Object.keys(state.tasks_by_context || {});
-    for (var i = 0; i < ctxKeys.length; i++) {
-      var arr = state.tasks_by_context[ctxKeys[i]];
-      for (var j = 0; j < arr.length; j++) {
-        if (arr[j].file === file && arr[j].line_text === line) return arr[j];
-      }
-    }
-    var lists = [state.waiting, state.due_soon];
-    for (var l = 0; l < lists.length; l++) {
-      for (var k = 0; k < lists[l].length; k++) {
-        if (lists[l][k].file === file && lists[l][k].line_text === line) return lists[l][k];
-      }
-    }
-    return null;
+  // ---- toast ----
+
+  var toastTimer = null;
+
+  function showToast(html) {
+    toastEl.innerHTML = "<span>" + L.escapeHtml(html) + "</span>";
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 4000);
   }
 
-  // ---- modals ----
-
-  var detailModal = document.getElementById("detail-modal");
-  var detailTitle = document.getElementById("detail-title");
-  var detailBody = document.getElementById("detail-body");
-  var modal = document.getElementById("quick-add");
-
-  function anyModalOpen() {
-    return !detailModal.classList.contains("hidden") || !modal.classList.contains("hidden");
+  function showUndo() {
+    var last = deleteOrder[deleteOrder.length - 1];
+    clearTimeout(toastTimer);
+    if (!last) { toastEl.hidden = true; return; }
+    toastEl.innerHTML = '<span dir="auto">Deleted “' + L.escapeHtml(last.text) + '”</span><button type="button" id="undo-btn">Undo</button>';
+    toastEl.hidden = false;
   }
 
-  function openDetailModal(title, bodyHtml) {
-    detailTitle.textContent = title;
-    detailBody.innerHTML = bodyHtml;
-    detailModal.classList.remove("hidden");
-    // put keyboard focus inside the overlay: the task's text field, or the close button
-    // (never a task checkbox in a project's list, where Space would complete it)
-    var first = detailBody.querySelector("#detail-text") || document.getElementById("detail-modal-close");
-    first.focus();
-  }
+  // ---- When / Move ----
 
-  // hand focus back to the page so j/k work straight away after closing
-  function hideModal(m) {
-    m.classList.add("hidden");
-    if (m.contains(document.activeElement)) document.activeElement.blur();
-  }
-
-  function closeDetailModal() {
-    hideModal(detailModal);
-  }
-
-  function openTaskDetail(file, line) {
-    var t = findTaskInState(file, line);
+  function setWhen(value) {
+    var t = targetTodo();
     if (!t) return;
-    openDetailModal("Task", DashboardLogic.taskDetailHtml(t, today()));
+    closePop();
+    if (t.isNew) {
+      if (value === "someday") { creating.status = "someday"; creating.when = null; }
+      else {
+        if (creating.status === "someday") creating.status = "next";
+        creating.when = value === "anytime" ? null : value;
+      }
+      renderAll();
+      focusTitle();
+      return;
+    }
+    edit(t, { new_when: value });
   }
 
-  function openProjectDetail(name) {
-    var all = (state.active_projects || []).concat(state.someday_projects || []);
-    var p = all.filter(function (x) { return x.name === name; })[0];
-    if (!p) return;
-    var related = DashboardLogic.tasksForProject(state, name);
-    openDetailModal("Project", DashboardLogic.projectDetailHtml(p, related, today(), state.vault_name));
+  function moveTo(kind, name) {
+    var t = targetTodo();
+    if (!t) return;
+    closePop();
+    if (t.isNew) {
+      creating.project = kind === "project" ? name : null;
+      creating.area = kind === "area" ? name : null;
+      renderAll();
+      focusTitle();
+      return;
+    }
+    var oldKey = L.taskKey(t.file, t.line_text);
+    var body = { file: t.file, line_text: t.line_text };
+    if (kind === "project") body.project = name;
+    if (kind === "area") body.area = name;
+    post("/api/move-task", body).then(function (res) {
+      var newKey = L.taskKey(res.file, res.line_text);
+      if (expanded === oldKey) expanded = newKey;
+      if (sel.key === oldKey) sel.key = newKey;
+      showToast("Moved to " + (kind === "inbox" ? "Inbox" : name));
+      return refresh();
+    }).catch(fail);
   }
+
+  function place(anchor) {
+    var r = anchor.getBoundingClientRect();
+    popEl.style.left = "0px"; popEl.style.top = "0px";
+    var w = popEl.offsetWidth, h = popEl.offsetHeight;
+    var left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    var top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    popEl.style.left = left + "px";
+    popEl.style.top = top + "px";
+  }
+
+  function anchorFor(act) {
+    return viewEl.querySelector('.todo-card [data-act="' + act + '"]') ||
+      (selectedEl() && selectedEl().querySelector(".todo-title")) || $(act + "-btn");
+  }
+
+  function openWhen(anchor) {
+    var t = targetTodo();
+    if (!t) return;
+    var sel0 = t.isNew ? (creating.when && /^\d/.test(creating.when) ? creating.when : null) : (t.when || null);
+    pop = { kind: "when", month: (sel0 && sel0 > today() ? sel0 : today()).slice(0, 7), selected: sel0 };
+    popEl.innerHTML = L.whenPopoverHtml(pop.month, today(), sel0);
+    popEl.hidden = false;
+    place(anchor || anchorFor("when"));
+    $("when-input").focus();
+  }
+
+  function redrawWhen() {
+    popEl.querySelector(".cal").outerHTML = L.calendarGrid(pop.month, today(), pop.selected);
+  }
+
+  function openMove(anchor) {
+    if (!targetTodo()) return;
+    pop = { kind: "move" };
+    popEl.innerHTML = '<input type="text" class="pop-input" id="move-input" placeholder="Move to…" autocomplete="off" dir="auto">' +
+      '<div id="move-list">' + L.movePopoverHtml(state, "") + "</div>";
+    popEl.hidden = false;
+    place(anchor || anchorFor("move"));
+    $("move-input").focus();
+  }
+
+  function openProjectMenu(anchor) {
+    var p = (state.projects || []).filter(function (x) { return x.name === route.name; })[0];
+    if (!p) return;
+    pop = { kind: "project" };
+    popEl.innerHTML =
+      '<button type="button" class="pop-item" data-proj="reviewed">' + L.icon("logbook", "i-logbook") + "Mark as Reviewed</button>" +
+      (p.status === "someday"
+        ? '<button type="button" class="pop-item" data-proj="active">' + L.icon("layers") + "Make Active</button>"
+        : '<button type="button" class="pop-item" data-proj="someday">' + L.icon("box", "i-someday") + "Move to Someday</button>") +
+      '<button type="button" class="pop-item" data-proj="done">' + L.icon("check") + "Complete Project</button>" +
+      '<div class="pop-sep"></div>' +
+      '<a class="pop-item" href="' + L.escapeHtml(L.obsidianUrl(state.vault_name, p.file)) + '">' + L.icon("open") + "Open in Obsidian</a>";
+    popEl.hidden = false;
+    place(anchor);
+  }
+
+  function projectAction(what) {
+    var name = route.name;
+    closePop();
+    if (what === "reviewed") {
+      post("/api/review-project", { project: name }).then(function (r) {
+        showToast("Reviewed — next review " + L.shortDate(r.review, today()));
+        return refresh();
+      }).catch(fail);
+    } else {
+      post("/api/project-status", { project: name, status: what }).then(function () {
+        if (what === "done") { showToast("Completed “" + name + "”"); navigate({ view: "logbook" }); }
+        return refresh();
+      }).catch(fail);
+    }
+  }
+
+  function closePop() {
+    if (!pop) return;
+    pop = null;
+    popEl.hidden = true;
+    popEl.innerHTML = "";
+    if (expanded) focusTitle();
+  }
+
+  popEl.addEventListener("click", function (e) {
+    var b;
+    if ((b = e.target.closest("[data-when]"))) setWhen(b.getAttribute("data-when"));
+    else if ((b = e.target.closest("[data-date]"))) setWhen(b.getAttribute("data-date") === today() ? "today" : b.getAttribute("data-date"));
+    else if ((b = e.target.closest("[data-cal]"))) {
+      var d = new Date(pop.month + "-01T00:00:00");
+      d.setMonth(d.getMonth() + parseInt(b.getAttribute("data-cal"), 10));
+      pop.month = L.isoDate(d).slice(0, 7);
+      redrawWhen();
+    } else if ((b = e.target.closest("[data-move-kind]"))) moveTo(b.getAttribute("data-move-kind"), b.getAttribute("data-move-name"));
+    else if ((b = e.target.closest("[data-proj]"))) projectAction(b.getAttribute("data-proj"));
+  });
+
+  popEl.addEventListener("input", function (e) {
+    if (e.target.id === "when-input") {
+      var v = L.parseWhen(e.target.value, today());
+      $("when-hint").textContent = !e.target.value.trim() ? "" : v === null ? "Not a date I know — try “fri” or “oct 3”"
+        : "→ " + (v === "today" ? "Today" : v === "evening" ? "This Evening" : v === "someday" ? "Someday" : v === "anytime" ? "No date"
+          : L.whenLabel({ when: v }, today()));
+    } else if (e.target.id === "move-input") {
+      $("move-list").innerHTML = L.movePopoverHtml(state, e.target.value);
+    }
+  });
+
+  popEl.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { e.stopPropagation(); closePop(); return; }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (e.target.id === "when-input") {
+      var v = L.parseWhen(e.target.value, today());
+      if (v) setWhen(v);
+    } else if (e.target.id === "move-input") {
+      var first = popEl.querySelector("[data-move-kind]");
+      if (first) first.click();
+    }
+  });
+
+  // ---- Quick Find ----
+
+  var finder = { results: [], active: 0 };
+  var finderInput = $("finder-input");
+
+  function openFinder() {
+    closePop();
+    closeCard();
+    $("finder").hidden = false;
+    finderInput.value = "";
+    finder = { results: [], active: 0 };
+    $("finder-results").innerHTML = "";
+    finderInput.focus();
+  }
+
+  function closeFinder() {
+    $("finder").hidden = true;
+    finderInput.blur();
+  }
+
+  function drawFinder() {
+    $("finder-results").innerHTML = L.quickFindHtml(finder.results, finder.active);
+    var a = $("finder-results").querySelector(".active");
+    if (a) a.scrollIntoView({ block: "nearest" });
+  }
+
+  function goFound(r) {
+    closeFinder();
+    if (!r) return;
+    navigate(r.route);
+    if (r.tag) { tagFilter = r.tag; renderAll(); }
+    if (r.kind === "todo") {
+      if (!r.todo.done) { expanded = r.key; draft = null; renderAll(); }
+      selectKey(r.key, true);
+      if (!r.todo.done) focusTitle();
+    }
+  }
+
+  finderInput.addEventListener("input", function () {
+    finder = { results: L.quickFind(state, finderInput.value, today()), active: 0 };
+    drawFinder();
+  });
+  finderInput.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      var n = finder.results.length;
+      if (n) finder.active = (finder.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      drawFinder();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      goFound(finder.results[finder.active]);
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      closeFinder();
+    }
+  });
+  $("finder-results").addEventListener("click", function (e) {
+    var li = e.target.closest(".qf-item");
+    if (li) goFound(finder.results[parseInt(li.getAttribute("data-i"), 10)]);
+  });
+  $("finder").addEventListener("click", function (e) { if (e.target === $("finder")) closeFinder(); });
+
+  // ---- dialog (shortcuts) ----
 
   function openHelp() {
-    openDetailModal("Keyboard shortcuts", DashboardLogic.shortcutsHtml());
+    $("dialog-title").textContent = "Keyboard shortcuts";
+    $("dialog-body").innerHTML = L.shortcutsHtml();
+    $("dialog").hidden = false;
+    $("dialog-close").focus();
   }
 
-  var quickAddError = document.getElementById("quick-add-error");
-
-  function openQuickAdd() {
-    quickAddError.hidden = true;
-    modal.classList.remove("hidden");
-    document.getElementById("quick-add-text").focus();
-  }
-
-  // Suggestions for the quick-add Project field, so a name can't be mistyped.
-  var projectChoices = "";
-  function fillProjectChoices() {
-    var names = (state.active_projects || []).concat(state.someday_projects || []).map(function (p) { return p.name; });
-    var html = names.map(function (n) { return '<option value="' + DashboardLogic.escapeHtml(n) + '">'; }).join("");
-    if (html !== projectChoices) {
-      projectChoices = html;
-      document.getElementById("project-choices").innerHTML = html;
-    }
-  }
-
-  function closeQuickAdd() {
-    hideModal(modal);
-  }
-
-  document.getElementById("detail-modal-close").addEventListener("click", closeDetailModal);
-  detailModal.addEventListener("click", function (e) {
-    if (e.target === detailModal) closeDetailModal();
-  });
-  document.getElementById("new-task-btn").addEventListener("click", openQuickAdd);
-  document.getElementById("help-btn").addEventListener("click", openHelp);
-  document.getElementById("quick-add-close").addEventListener("click", closeQuickAdd);
-  modal.addEventListener("click", function (e) {
-    if (e.target === modal) closeQuickAdd(); // click on the backdrop, not the form
-  });
+  function closeDialog() { $("dialog").hidden = true; }
+  $("dialog-close").addEventListener("click", closeDialog);
+  $("dialog").addEventListener("click", function (e) { if (e.target === $("dialog")) closeDialog(); });
 
   // ---- clicks ----
 
-  document.addEventListener("click", function (e) {
-    if (e.target.closest(".filter-clear")) { setQuery(""); return; }
+  function openRow(el) {
+    if (el.classList.contains("todo") && !el.classList.contains("todo-card")) {
+      var t = L.findTodo(state, el.getAttribute("data-file"), el.getAttribute("data-line"));
+      if (t && !t.done) openCard(t);
+    } else if (el.classList.contains("event")) {
+      toggleRecording({ subject: el.getAttribute("data-subject"), attendees: el.getAttribute("data-attendees") || "" });
+    } else if (el.getAttribute("data-action") === "transcribe") {
+      runTranscription();
+    } else if (el.hasAttribute("data-route")) {
+      var tag = el.getAttribute("data-tag");
+      navigate(L.parseRoute(el.getAttribute("data-route")));
+      if (tag) { tagFilter = tag; renderAll(); }
+    } else if (el.classList.contains("note")) {
+      window.location.href = L.obsidianUrl(state.vault_name, el.getAttribute("data-file"));
+    }
+  }
 
-    var runLink = e.target.closest(".att-run");
-    if (runLink) {
+  function runTranscription() {
+    if (transcribing === "running") return;
+    transcribing = "running";
+    renderAll();
+    post("/api/transcribe", {}).then(function () { transcribing = null; }, function () { transcribing = "failed"; }).then(refresh);
+  }
+
+  viewEl.addEventListener("click", function (e) {
+    var el = e.target;
+    var card = el.closest(".todo-card");
+    var act = el.closest("[data-act]");
+    if (act) {
+      var a = act.getAttribute("data-act");
+      var t = card && !card.hasAttribute("data-new") ? L.findTodo(state, card.getAttribute("data-file"), card.getAttribute("data-line")) : null;
       e.preventDefault();
-      if (runLink.getAttribute("data-action") === "transcribe" && transcribing !== "running") {
-        transcribing = "running";
-        renderAll();
-        post("/api/transcribe", {})
-          .then(function () { transcribing = null; }, function () { transcribing = "failed"; })
-          .then(refresh);
-      }
+      e.stopPropagation();
+      if (a === "when") openWhen(act);
+      else if (a === "clear-when") setWhen("anytime");
+      else if (a === "clear-deadline") {
+        if (card.hasAttribute("data-new")) { creating.deadline = null; renderAll(); focusTitle(); }
+        else if (t) edit(t, { new_due: "" });
+      } else if (a === "move") openMove(act);
+      else if (a === "obsidian" && t) window.location.href = L.obsidianUrl(state.vault_name, t.file);
+      else if (a === "delete" && t) scheduleDelete(t);
+      else if (a === "project-menu") openProjectMenu(act);
+      else if (a === "project-reviewed") projectAction("reviewed");
+      else if (a === "project-active") projectAction("active");
+      else if (a === "toggle-logged") { showLogged = !showLogged; renderAll(); }
       return;
     }
+    if (card) return; // clicks inside the card edit it
+    if (expanded) { closeCard(); }
 
-    var projTrigger = e.target.closest(".proj-open");
-    if (projTrigger) {
-      e.preventDefault();
-      openProjectDetail(projTrigger.getAttribute("data-name"));
-      return;
-    }
+    var tagBtn = el.closest(".tagbtn");
+    if (tagBtn) { tagFilter = tagBtn.getAttribute("data-tag") || null; sel = { key: null, index: -1 }; renderAll(); return; }
 
-    var meetingTrigger = e.target.closest(".meeting-open");
-    if (meetingTrigger) {
-      e.preventDefault();
-      var meetingFile = meetingTrigger.getAttribute("data-file");
-      if (meetingFile) window.open(DashboardLogic.obsidianUrl(state.vault_name, meetingFile));
-      return;
-    }
+    var check = el.closest(".check");
+    var row = el.closest(".nav-item");
+    if (check && row) { toggleCheck(row.getAttribute("data-file"), row.getAttribute("data-line")); return; }
+    if (el.closest("a[href]")) return; // group headers, notes and crumbs are real links
+    if (!row) { select(-1); return; }
+    var i = navItems().indexOf(row);
+    var wasSelected = i === sel.index;
+    select(i, false);
+    // Things: click selects, a second click (or a double-click) opens — a tap on a touch screen
+    // opens straight away; links act at once
+    if (row.hasAttribute("data-route") || row.getAttribute("data-action")) openRow(row);
+    else if ((wasSelected || touchOnly) && row.classList.contains("todo")) openRow(row);
+  });
 
-    var undoBtn = e.target.closest(".task-undo");
-    if (undoBtn) {
-      undoDelete(undoBtn.getAttribute("data-file"), undoBtn.getAttribute("data-line"));
-      return;
-    }
+  viewEl.addEventListener("dblclick", function (e) {
+    var row = e.target.closest(".nav-item");
+    if (row && !row.classList.contains("todo-card") && !e.target.closest(".check")) openRow(row);
+  });
 
-    var saveBtn = e.target.closest(".detail-save");
-    if (saveBtn) {
-      var textEl = document.getElementById("detail-text");
-      var newText = textEl.value.trim();
-      if (!newText) { textEl.focus(); return; } // an empty line would make the task vanish
-      var ctxEl = document.getElementById("detail-context");
-      // always send the date: an emptied field means "remove the due date"
-      var editBody = { file: saveBtn.getAttribute("data-file"), line_text: saveBtn.getAttribute("data-line"),
-        new_text: newText, new_due: document.getElementById("detail-due").value };
-      if (ctxEl) editBody.new_context = ctxEl.value;
-      post("/api/edit-task", editBody).then(function () { closeDetailModal(); refresh(); })
-        .catch(function () { closeDetailModal(); refresh(); });
-      return;
-    }
-    var doneBtn = e.target.closest(".detail-mark-done");
-    if (doneBtn) {
-      post("/api/complete-task", { file: doneBtn.getAttribute("data-file"), line_text: doneBtn.getAttribute("data-line") })
-        .then(function () { closeDetailModal(); refresh(); }).catch(function () { closeDetailModal(); refresh(); });
-      return;
-    }
-    var detailDelBtn = e.target.closest(".detail-delete");
-    if (detailDelBtn) {
-      closeDetailModal();
-      scheduleDelete(detailDelBtn.getAttribute("data-file"), detailDelBtn.getAttribute("data-line"));
-      return;
-    }
+  viewEl.addEventListener("input", function (e) {
+    if (e.target.classList.contains("card-title")) draft = e.target.value;
+  });
 
-    // clicking a row on the page also makes it the keyboard selection
-    var navEl = e.target.closest("#page-" + page + " .nav-item");
-    if (navEl) select(navItems().indexOf(navEl), false);
-
-    var li = e.target.closest(".task");
-    if (!li) return;
-    var file = li.getAttribute("data-file");
-    var line = li.getAttribute("data-line");
-    if (e.target.classList.contains("task-check")) {
-      completeTask(file, line);
-    } else if (e.target.classList.contains("task-delete")) {
-      scheduleDelete(file, line);
-    } else {
-      openTaskDetail(file, line);
+  viewEl.addEventListener("change", function (e) {
+    var card = e.target.closest(".todo-card");
+    if (!card) return;
+    var isNew = card.hasAttribute("data-new");
+    var t = isNew ? null : L.findTodo(state, card.getAttribute("data-file"), card.getAttribute("data-line"));
+    if (e.target.classList.contains("card-deadline")) {
+      if (isNew) { creating.deadline = e.target.value || null; e.target.blur(); renderAll(); focusTitle(); }
+      else if (t) { e.target.blur(); edit(t, { new_due: e.target.value }); }
+    } else if (e.target.classList.contains("card-context")) {
+      if (isNew) { creating.context = e.target.value || null; e.target.blur(); renderAll(); focusTitle(); }
+      else if (t && e.target.value) { e.target.blur(); edit(t, { new_context: e.target.value }); }
     }
   });
+
+  // clicking anywhere outside the open card (and outside a popover) closes it
+  document.addEventListener("mousedown", function (e) {
+    if (pop && !popEl.contains(e.target) && !e.target.closest("[data-act]") && !e.target.closest(".bar-btn")) closePop();
+  });
+  $("scroll").addEventListener("click", function (e) {
+    // (a target no longer in the page is the row the card just replaced — not "outside")
+    if (expanded && e.target.isConnected && !e.target.closest(".todo-card") && !viewEl.contains(e.target)) closeCard();
+  });
+
+  navEl.addEventListener("click", function (e) {
+    var a = e.target.closest("a[href^='#']");
+    if (!a) return;
+    e.preventDefault();
+    navigate(L.parseRoute(a.getAttribute("href")));
+  });
+  viewEl.addEventListener("click", function (e) {
+    var a = e.target.closest("a[href^='#']");
+    if (!a) return;
+    e.preventDefault();
+    navigate(L.parseRoute(a.getAttribute("href")));
+  }, true);
+
+  toastEl.addEventListener("click", function (e) { if (e.target.id === "undo-btn") undoDelete(); });
 
   // ---- keyboard ----
 
-  var searchEl = document.getElementById("search");
-
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
-      if (anyModalOpen()) { closeQuickAdd(); closeDetailModal(); return; }
-      // Esc in the box, or anywhere while a filter is active, clears the search
-      if (e.target === searchEl) searchEl.blur();
-      if (query) setQuery("");
-      return;
-    }
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    var tag = (e.target.tagName || "").toLowerCase();
+    if (!$("dialog").hidden) { if (e.key === "Escape") closeDialog(); return; }
+    if (!$("finder").hidden) return; // the finder's input handles its own keys
+    if (pop && e.key === "Escape") { closePop(); return; }
+    var target = e.target;
+    var tag = (target.tagName || "").toLowerCase();
 
-    // Enter in the search box drops you onto the first result, ready for j/k
-    if (e.target === searchEl) {
-      if (e.key === "Enter" || e.key === "ArrowDown") {
+    if (target.classList && target.classList.contains("card-title")) {
+      if (e.key === "Enter" || e.key === "Escape") {
         e.preventDefault();
-        searchEl.blur();
-        select(0, true);
+        var wasNew = expanded === "new";
+        var emptyNew = wasNew && !(draft || "").trim();
+        closeCard();
+        // Enter on a new to-do starts the next one, like Things' Quick Entry
+        if (wasNew && !emptyNew && e.key === "Enter") setTimeout(startCreate, 0);
       }
       return;
     }
-    // Enter in a task's detail fields saves it
-    if (e.key === "Enter" && (tag === "input" || tag === "select") && detailBody.contains(e.target)) {
-      var save = detailBody.querySelector(".detail-save");
-      if (save) { e.preventDefault(); save.click(); }
+    if (e.key === "Escape") {
+      if (expanded) { closeCard(); return; }
+      if (document.querySelector(".app").classList.contains("nav-open")) { document.querySelector(".app").classList.remove("nav-open"); return; }
+      if (tagFilter) { tagFilter = null; renderAll(); return; }
+      select(-1);
       return;
     }
-    if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
-    if (anyModalOpen()) return;
-    // a focused button/link handles its own Enter/Space
+    if (tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable) return;
+    if (pop) return;
     if ((e.key === "Enter" || e.key === " ") && (tag === "button" || tag === "a")) return;
-
-    var action = DashboardLogic.keyAction(e);
+    var action = L.keyAction(e);
     if (action && runAction(action)) e.preventDefault();
   });
 
-  // Returns true when the key was used, so the browser's default (scrolling, typing) is skipped.
   function runAction(action) {
     var el = selectedEl();
-    var isTask = el && el.classList.contains("task");
-    if (action.indexOf("page:") === 0) {
+    var t = targetTodo();
+    if (action.indexOf("list:") === 0) {
       var n = parseInt(action.slice(5), 10);
-      if (n > PAGES.length) return false;
-      goTo(PAGES[n - 1]);
+      if (n > L.LISTS.length) return false;
+      navigate({ view: L.LISTS[n - 1] });
+      return true;
+    }
+    if (action.indexOf("when:") === 0) {
+      if (t) setWhen(action.slice(5));
       return true;
     }
     switch (action) {
-      case "down": return move(1);
-      case "up": return move(-1);
-      case "left": return moveHorizontal(-1);
-      case "right": return moveHorizontal(1);
+      case "down": if (expanded) closeCard(); move(1); return true;
+      case "up": if (expanded) closeCard(); move(-1); return true;
       case "open":
         if (!el) return false;
-        activate(el);
+        openRow(el);
         return true;
       case "complete":
-        if (isTask) completeTask(el.getAttribute("data-file"), el.getAttribute("data-line"));
+        if (t && !t.isNew) toggleCheck(t.file, t.line_text);
         return true;
       case "delete":
-        if (isTask) scheduleDelete(el.getAttribute("data-file"), el.getAttribute("data-line"));
+        if (t && !t.isNew) scheduleDelete(t);
         return true;
-      case "undo": undoLastDelete(); return true;
-      case "search": searchEl.focus(); return true;
-      case "new": openQuickAdd(); return true;
+      case "undo": undoDelete(); return true;
+      case "when": if (t) openWhen(); return true;
+      case "move": if (t) openMove(); return true;
+      case "obsidian":
+        if (t && !t.isNew) window.location.href = L.obsidianUrl(state.vault_name, t.file);
+        else if (el && el.classList.contains("note")) openRow(el);
+        return true;
+      case "search": openFinder(); return true;
+      case "new": startCreate(); return true;
       case "help": openHelp(); return true;
       case "record": toggleRecording(); return true;
     }
@@ -467,14 +777,13 @@
 
   // ---- recording ----
 
-  var RECORD_LABEL = "● Record";
-  var recordBtn = document.getElementById("record-btn");
+  var recordBtn = $("record-btn");
   var rec = null;     // { handle, meta, timer } while recording
   var unsaved = null; // { pcm, meta } when an upload failed — kept so the audio isn't lost
 
   function setRecordButton(text, cls) {
     recordBtn.textContent = text;
-    recordBtn.className = cls || "";
+    recordBtn.className = "bar-btn bar-record" + (cls ? " " + cls : "");
   }
 
   // ev: the calendar meeting being recorded ({subject, attendees}); by default whichever is on now
@@ -487,10 +796,9 @@
   function startRecording(ev) {
     recordBtn.disabled = true;
     MeetingRecorder.start().then(function (handle) {
-      var e = ev || DashboardLogic.currentEvent(state && state.calendar, DashboardLogic.localDateTime(new Date()).slice(0, 16));
+      var e = ev || L.currentEvent(state && state.calendar, nowMinute());
       rec = { handle: handle, meta: {
-        started: DashboardLogic.localDateTime(handle.startedAt),
-        title: e ? e.subject : "", attendees: e ? e.attendees || "" : "",
+        started: L.localDateTime(handle.startedAt), title: e ? e.subject : "", attendees: e ? e.attendees || "" : "",
       } };
       recordBtn.disabled = false;
       tick();
@@ -503,8 +811,8 @@
 
   function tick() {
     var secs = Math.floor((Date.now() - rec.handle.startedAt.getTime()) / 1000);
-    setRecordButton("■ " + Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0") +
-      (rec.meta.title ? " · " + rec.meta.title : ""), "recording");
+    setRecordButton(Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0") +
+      (rec.meta.title ? " · " + rec.meta.title : "") + " — stop", "recording");
   }
 
   function stopRecording() {
@@ -519,7 +827,7 @@
   function upload(pcm, meta) {
     recordBtn.disabled = true;
     setRecordButton("Saving…");
-    fetch(DashboardLogic.recordingUrl(meta), {
+    fetch(L.recordingUrl(meta), {
       method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: pcm.buffer,
     }).then(function (res) {
       if (!res.ok) throw new Error("save failed: " + res.status);
@@ -536,7 +844,7 @@
   function flash(text) {
     recordBtn.disabled = false;
     setRecordButton(text);
-    setTimeout(function () { if (!rec && !unsaved) setRecordButton(RECORD_LABEL); }, 4000);
+    setTimeout(function () { if (!rec && !unsaved) setRecordButton("Record"); }, 4000);
   }
 
   recordBtn.addEventListener("click", function () { toggleRecording(); });
@@ -544,47 +852,53 @@
     if (rec || unsaved) { e.preventDefault(); e.returnValue = ""; }
   });
 
-  // tab clicks, attention links and Back/Forward arrive here
-  window.addEventListener("hashchange", function () {
-    var p = pageFromHash();
-    if (p !== page) showPage(p);
-  });
+  // ---- chrome: bottom bar, sidebar footer, mobile drawer ----
 
-  searchEl.addEventListener("input", function () {
-    query = searchEl.value;
-    renderAll();
-  });
+  $("new-btn").innerHTML = L.icon("plus");
+  $("when-btn").innerHTML = L.icon("calendar");
+  $("move-btn").innerHTML = L.icon("move");
+  $("search-btn").innerHTML = L.icon("search");
+  $("theme-toggle").innerHTML = L.icon("theme");
+  $("help-btn").innerHTML = L.icon("help");
+  $("dialog-close").innerHTML = L.icon("close");
+  $("menu-btn").innerHTML = L.icon("menu");
 
-  document.getElementById("theme-toggle").addEventListener("click", function () {
-    var current = document.documentElement.getAttribute("data-theme") || "light";
-    applyTheme(current === "light" ? "dark" : "light");
+  $("new-btn").addEventListener("click", startCreate);
+  $("when-btn").addEventListener("click", function () { if (pop && pop.kind === "when") closePop(); else openWhen($("when-btn")); });
+  $("move-btn").addEventListener("click", function () { if (pop && pop.kind === "move") closePop(); else openMove($("move-btn")); });
+  $("search-btn").addEventListener("click", openFinder);
+  $("find-btn").addEventListener("click", openFinder);
+  $("help-btn").addEventListener("click", openHelp);
+  $("theme-toggle").addEventListener("click", function () {
+    applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark", true);
   });
+  $("menu-btn").addEventListener("click", function () { document.querySelector(".app").classList.add("nav-open"); });
+  $("scrim").addEventListener("click", function () { document.querySelector(".app").classList.remove("nav-open"); });
 
-  document.getElementById("quick-add-form").addEventListener("submit", function (e) {
+  var npForm = $("new-project-form"), npInput = $("new-project-title");
+  $("new-project-btn").addEventListener("click", function () {
+    npForm.hidden = false;
+    npInput.value = "";
+    npInput.focus();
+  });
+  npInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { e.stopPropagation(); npForm.hidden = true; }
+  });
+  npInput.addEventListener("blur", function () { setTimeout(function () { npForm.hidden = true; }, 150); });
+  npForm.addEventListener("submit", function (e) {
     e.preventDefault();
-    var text = document.getElementById("quick-add-text").value.trim();
-    if (!text) return;
-    var context = document.getElementById("quick-add-context").value;
-    var project = document.getElementById("quick-add-project").value.trim() || undefined;
-    quickAddError.hidden = true;
-    post("/api/new-task", { text: text, context: context, project: project }).then(function () {
-      document.getElementById("quick-add-text").value = "";
-      document.getElementById("quick-add-project").value = "";
-      closeQuickAdd();
-      refresh();
-    }).catch(function (err) {
-      // e.g. "project not found: X" — say so instead of silently doing nothing
-      quickAddError.textContent = /project not found/.test(err.message)
-        ? "No project called “" + project + "”. Pick one from the list, or leave it empty to capture to the inbox."
-        : "Couldn't add the task: " + err.message;
-      quickAddError.hidden = false;
-      document.getElementById("quick-add-project").focus();
-    });
+    var title = npInput.value.trim();
+    if (!title) return;
+    var area = route.view === "area" ? route.name : undefined;
+    post("/api/new-project", { title: title, area: area }).then(function () {
+      npForm.hidden = true;
+      return refresh().then(function () { navigate({ view: "project", name: title }); });
+    }).catch(fail);
   });
 
-  syncTopbarHeight();
-  window.addEventListener("resize", syncTopbarHeight);
-  applyTheme(localStorage.getItem("dashboard-theme") || "light");
+  var saved = store("dashboard-theme");
+  applyTheme(saved || (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  setRecordButton("Record");
   refresh();
   setInterval(refresh, POLL_MS);
 })();

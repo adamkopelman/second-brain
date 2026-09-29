@@ -85,38 +85,83 @@ def test_iter_tasks_with_location_keeps_a_task_that_is_only_a_link(tmp_path):
     task = next(P.iter_tasks_with_location(tmp_path))
     assert task["links"] == ["Sam Rivera"]
 
+def _todo(state, text):
+    return next(t for t in state["todos"] if t["text"] == text)
+
+
 def test_collect_state_threads_links_and_vault_name(tmp_path):
     _mk_vault(tmp_path)
     state = P.collect_state(tmp_path)
-    assert state["waiting"][0]["links"] == ["Design Agency"]
-    assert state["tasks_by_context"]["#computer"][0]["links"] == []
+    assert _todo(state, "Logo files")["links"] == ["Design Agency"]
+    assert _todo(state, "Finalize homepage wireframe")["links"] == []
     assert state["vault_name"] == tmp_path.name
 
-def test_collect_state_counts_and_groups(tmp_path):
+
+def test_collect_state_shapes_todos_like_things(tmp_path):
     _mk_vault(tmp_path)
     state = P.collect_state(tmp_path)
-    assert state["inbox_count"] == 1
-    assert len(state["tasks_by_context"]["#computer"]) == 1
-    assert state["tasks_by_context"]["#computer"][0]["text"] == "Finalize homepage wireframe"
-    assert len(state["waiting"]) == 1
-    assert state["waiting"][0]["since"] == "2026-09-05"
-    assert len(state["due_soon"]) == 1  # due 2026-09-12 is within 7 days of "today" in fixture-independent terms
-    names = {p["name"] for p in state["active_projects"]}
-    assert names == {"Website Redesign", "Plan Family Trip"}
-    trip = next(p for p in state["active_projects"] if p["name"] == "Plan Family Trip")
-    assert trip["review"] == "2026-09-03"
-    assert trip["review_overdue"] is True  # 2026-09-03 is in the past relative to any real test run
-    someday_names = {p["name"] for p in state["someday_projects"]}
-    assert someday_names == {"Learn Spanish"}
+    wf = _todo(state, "Finalize homepage wireframe")
+    assert wf["status"] == "next" and wf["context"] == "computer"
+    assert wf["deadline"] == "2026-09-12" and wf["when"] is None and wf["evening"] is False
+    assert wf["project"] == "Website Redesign" and wf["area"] == "Career"
+    assert wf["heading"] == "Next actions" and wf["done"] is False and wf["inbox"] is False
+    logo = _todo(state, "Logo files")
+    assert logo["status"] == "waiting" and logo["since"] == "2026-09-05" and logo["heading"] == "Waiting for"
+    loose = _todo(state, "loose item")
+    assert loose["inbox"] is True and loose["status"] is None
+    assert _todo(state, "Done already")["done"] is True
+
+
+def test_collect_state_projects_carry_status_area_progress_and_headings(tmp_path):
+    _mk_vault(tmp_path)
+    state = P.collect_state(tmp_path)
+    by_name = {p["name"]: p for p in state["projects"]}
+    assert set(by_name) == {"Website Redesign", "Plan Family Trip", "Learn Spanish"}
+    web = by_name["Website Redesign"]
+    assert web["status"] == "active" and web["area"] == "Career"
+    assert (web["open"], web["done"]) == (2, 1)
+    assert web["headings"] == ["Next actions", "Waiting for"]
+    trip = by_name["Plan Family Trip"]
+    assert trip["review"] == "2026-09-03" and trip["review_overdue"] is True
+    assert by_name["Learn Spanish"]["status"] == "someday"
+    assert by_name["Learn Spanish"]["review_overdue"] is False  # someday projects aren't reviewed weekly
+    assert state["areas"] == [{"name": "Career", "file": None}]
+
+
+def test_collect_state_lists_area_notes_and_their_todos(tmp_path):
+    (tmp_path / "20 Areas").mkdir(parents=True)
+    (tmp_path / "20 Areas" / "Health.md").write_text("# Health\n\n## Next actions\n- [ ] Book a checkup\n")
+    state = P.collect_state(tmp_path)
+    assert state["areas"] == [{"name": "Health", "file": "20 Areas/Health.md"}]
+    t = _todo(state, "Book a checkup")
+    assert t["area"] == "Health" and t["project"] is None
+
+
+def test_collect_state_reads_when_evening_and_completion(tmp_path):
+    (tmp_path / "Journal").mkdir(parents=True)
+    (tmp_path / "Journal" / "2026-09-10.md").write_text(
+        "- [ ] Call mom #next #phone #evening [scheduled:: 2026-09-10]\n"
+        "- [x] Old one #next [completion:: 2026-09-08]\n"
+        "- [x] Tasks-plugin one #next \u2705 2026-09-09\n"
+        "- [ ] untagged journal line\n"
+        "- [ ] Read #someday #reading\n", encoding="utf-8")
+    state = P.collect_state(tmp_path)
+    mom = _todo(state, "Call mom")
+    assert mom["when"] == "2026-09-10" and mom["evening"] is True and mom["context"] == "phone"
+    assert _todo(state, "Read")["tags"] == ["reading"]
+    done = [t for t in state["todos"] if t["done"]]
+    assert [t["completed"] for t in done] == ["2026-09-09", "2026-09-08"]  # newest first
+    assert done[0]["text"] == "Tasks-plugin one"
+    assert not any(t["text"] == "untagged journal line" for t in state["todos"])
+
 
 def test_collect_state_on_empty_vault(tmp_path):
     (tmp_path / "00 Inbox").mkdir()
     (tmp_path / "00 Inbox" / "README.md").write_text("# Inbox\n")
     state = P.collect_state(tmp_path)
-    assert state["inbox_count"] == 0
-    assert state["tasks_by_context"] == {}
-    assert state["waiting"] == []
-    assert state["active_projects"] == []
+    assert state["todos"] == [] and state["projects"] == [] and state["areas"] == []
+    assert state["inbox_notes"] == []
+
 
 def test_collect_state_extracts_project_outcome(tmp_path):
     (tmp_path / "10 Projects").mkdir(parents=True)
@@ -126,11 +171,15 @@ def test_collect_state_extracts_project_outcome(tmp_path):
     (tmp_path / "10 Projects" / "Blank.md").write_text(
         "---\ntype: project\nstatus: someday\n---\n# Blank\n\n"
         '**Outcome:** _What does "done" look like?_\n')
+    (tmp_path / "10 Projects" / "Finished.md").write_text(
+        "---\ntype: project\nstatus: done\n---\n# Finished\n- [ ] leftover #next\n")
     state = P.collect_state(tmp_path)
-    filled = next(p for p in state["active_projects"] if p["name"] == "Filled")
-    assert filled["outcome"] == "New site launched with updated branding."
-    blank = next(p for p in state["someday_projects"] if p["name"] == "Blank")
-    assert blank["outcome"] is None
+    by_name = {p["name"]: p for p in state["projects"]}
+    assert by_name["Filled"]["outcome"] == "New site launched with updated branding."
+    assert by_name["Blank"]["outcome"] is None
+    assert "Finished" not in by_name
+    assert not any(t["text"] == "leftover" for t in state["todos"])
+
 
 def test_iter_tasks_with_location_tags_meeting_source(tmp_path):
     _mk_vault(tmp_path)
@@ -152,10 +201,11 @@ def test_collect_state_threads_meeting_field_and_unknown_context(tmp_path):
         "---\ntype: meeting\ndate: 2026-09-10\ntranscription_status: done\nsummary_status: done\n---\n"
         "# Sync\n\n## Action items\n- [ ] Email the vendor #next #unknown [[2026-09-10 Sync]]\n")
     state = P.collect_state(tmp_path)
-    assert len(state["tasks_by_context"]["#unknown"]) == 1
-    task = state["tasks_by_context"]["#unknown"][0]
+    task = _todo(state, "Email the vendor")
+    assert task["context"] == "unknown"
     assert task["meeting"] == "2026-09-10 Sync"
     assert task["project"] is None
+
 
 def test_collect_state_lists_recent_meetings_newest_first_capped(tmp_path):
     (tmp_path / "Meetings").mkdir(parents=True)
@@ -171,7 +221,7 @@ def test_collect_state_lists_recent_meetings_newest_first_capped(tmp_path):
     assert state["meetings"][0]["summary_status"] == "pending"
 
 
-def test_collect_state_lists_inbox_items_with_text_and_capture_date(tmp_path):
+def test_collect_state_lists_inbox_notes_without_checkboxes(tmp_path):
     _mk_vault(tmp_path)
     ib = tmp_path / "00 Inbox"
     (ib / "2026-09-10 call-plumber.md").write_text(
@@ -182,13 +232,11 @@ def test_collect_state_lists_inbox_items_with_text_and_capture_date(tmp_path):
         "---\ntype: inbox\ncaptured: 2026-09-11\n---\n- [ ] להתקשר לאינסטלטור #next #phone\n", encoding="utf-8")
     (ib / "2026-09-12 empty.md").write_text("---\ntype: inbox\ncaptured: 2026-09-12\n---\n", encoding="utf-8")
     state = P.collect_state(tmp_path)
-    items = state["inbox_items"]
-    by_file = {i["file"]: i for i in items}
-    assert by_file["00 Inbox/2026-09-10 call-plumber.md"]["text"] == "Call plumber about the leaky faucet"
-    assert by_file["00 Inbox/2026-09-11 idea.md"]["text"] == "Check out Atomic Habits — recommended by Sam"
-    assert by_file["00 Inbox/2026-09-11 idea.md"]["captured"] == "2026-09-11"  # from the file name
-    assert by_file["00 Inbox/2026-09-11 hebrew.md"]["text"] == "להתקשר לאינסטלטור"
-    assert by_file["00 Inbox/2026-09-12 empty.md"]["text"] == "2026-09-12 empty"  # falls back to the name
-    assert [i["file"] for i in items][0] == "00 Inbox/loose.md"  # captured 2026-09-09 sorts first
-    assert "00 Inbox/README.md" not in by_file
-    assert state["inbox_count"] == len(items) == 5
+    notes = {i["file"]: i for i in state["inbox_notes"]}
+    # captures with a checkbox are to-dos; only the rest are notes
+    assert set(notes) == {"00 Inbox/2026-09-11 idea.md", "00 Inbox/2026-09-12 empty.md"}
+    assert notes["00 Inbox/2026-09-11 idea.md"]["text"] == "Check out Atomic Habits — recommended by Sam"
+    assert notes["00 Inbox/2026-09-11 idea.md"]["captured"] == "2026-09-11"  # from the file name
+    assert notes["00 Inbox/2026-09-12 empty.md"]["text"] == "2026-09-12 empty"  # falls back to the name
+    inbox_todos = {t["text"] for t in state["todos"] if t["inbox"]}
+    assert inbox_todos == {"loose item", "Call plumber about the leaky faucet", "להתקשר לאינסטלטור"}

@@ -34,12 +34,13 @@ Two buttons, both added by the vendored `record-meeting` Obsidian plugin
 Both are also in the command palette (`Ctrl+P` → "Record Meeting: ...") if you'd rather use a hotkey.
 
 **Or record from the local dashboard** (`docs/gtd/local-dashboard.md`): press `r` or click
-**● Record** — or press `Enter` on one of today's Outlook meetings to record it under that meeting's
-name, with its attendees. It writes the same WAV + note as the mic icon and transcribes it
-automatically in the background, so there's nothing else to click. For recordings made with the
-Obsidian mic icon, the dashboard's Today page shows "N meetings to transcribe" (press `Enter` on it
-to run the same transcription), and the Tasks page's "Needs triage" section surfaces any action item
-whose context came back `#unknown` so you can resolve it with a couple of keystrokes.
+**Record** in the bottom bar — or press `Enter` on one of the Outlook meetings listed on Today or
+Upcoming to record it under that meeting's name, with its attendees. It writes the same WAV + note as
+the mic icon and transcribes it automatically in the background, so there's nothing else to click.
+For recordings made with the Obsidian mic icon, Today shows "N meetings to transcribe" (press `Enter`
+on it to run the same transcription), and "N to-dos from meetings need a tag" for any action item
+whose context came back `#unknown` — it opens Anytime filtered to them, so you can open each one and
+pick a real tag.
 
 ## Summarizing (Claude Code)
 

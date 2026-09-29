@@ -47,7 +47,7 @@ def test_get_state_returns_current_tasks(tmp_path):
         with request.urlopen(f"http://127.0.0.1:{server.server_port}/api/state") as r:
             assert r.status == 200
             data = json.loads(r.read())
-        assert any("Pick SSG" in t["text"] for t in data["tasks_by_context"]["#computer"])
+        assert any(t["text"] == "Pick SSG" and t["context"] == "computer" for t in data["todos"])
     finally:
         server.shutdown()
 
@@ -97,7 +97,7 @@ def test_complete_task_writes_the_file(tmp_path):
                     {"file": "10 Projects/P.md", "line_text": "- [ ] Pick SSG #next #computer"}) as r:
             assert r.status == 200
         text = (tmp_path / "10 Projects" / "P.md").read_text()
-        assert "- [x] Pick SSG #next #computer" in text
+        assert "- [x] Pick SSG #next #computer [completion:: " in text
     finally:
         server.shutdown()
 
@@ -323,5 +323,47 @@ def test_record_meeting_starts_transcription_when_enabled(tmp_path, monkeypatch)
         with _post_audio(server, "started=2026-09-11T14:00:05", bytes(20)):
             pass
         assert calls == [tmp_path]
+    finally:
+        server.shutdown()
+
+
+def _json(resp):
+    with resp as r:
+        return json.loads(r.read())
+
+
+def test_things_style_endpoints_round_trip(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    line = "- [ ] Pick SSG #next #computer"
+    try:
+        r = _json(_post(server, "/api/edit-task", {"file": "10 Projects/P.md", "line_text": line,
+                                                   "new_when": "someday"}))
+        assert r["line_text"] == "- [ ] Pick SSG #computer #someday"
+        done = _json(_post(server, "/api/complete-task", {"file": "10 Projects/P.md", "line_text": r["line_text"]}))
+        assert done["line_text"].startswith("- [x] Pick SSG")
+        back = _json(_post(server, "/api/uncomplete-task", {"file": "10 Projects/P.md",
+                                                            "line_text": done["line_text"]}))
+        assert back["line_text"] == "- [ ] Pick SSG #computer #someday"
+        cap = _json(_post(server, "/api/new-task", {"text": "Call dentist", "context": "phone", "when": "today"}))
+        moved = _json(_post(server, "/api/move-task", {"file": cap["file"], "line_text": cap["line_text"],
+                                                       "project": "P"}))
+        assert moved["file"] == "10 Projects/P.md"
+        rev = _json(_post(server, "/api/review-project", {"project": "P"}))
+        assert f"review: {rev['review']}" in (tmp_path / "10 Projects" / "P.md").read_text()
+        _json(_post(server, "/api/project-status", {"project": "P", "status": "someday"}))
+        assert "status: someday" in (tmp_path / "10 Projects" / "P.md").read_text()
+    finally:
+        server.shutdown()
+
+
+def test_a_malformed_date_is_a_bad_request(tmp_path):
+    _mk_vault(tmp_path)
+    server = _start_server(tmp_path)
+    try:
+        with pytest.raises(HTTPError) as e:
+            _post(server, "/api/edit-task", {"file": "10 Projects/P.md", "line_text": "- [ ] Pick SSG #next #computer",
+                                             "new_due": "soon"})
+        assert e.value.code == 400
     finally:
         server.shutdown()

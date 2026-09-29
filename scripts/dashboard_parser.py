@@ -34,8 +34,14 @@ def _links_except_self(body: str, own_stem: str) -> list[str]:
     return out
 
 
+_HEADING_RE = _re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+# Obsidian Tasks writes a completion date as "✅ 2026-09-29"; Dataview/this dashboard as [completion:: …]
+_DONE_EMOJI_RE = _re.compile(r"\u2705\s*(\d{4}-\d{2}-\d{2})")
+
+
 def iter_tasks_with_location(vault: Path):
-    """Yield one dict per task checkbox line across all CONTENT folders (README excluded)."""
+    """Yield one dict per task checkbox line across all CONTENT folders (README excluded), with the
+    `## heading` it sits under — a project's headings group its to-dos the way Things' do."""
     vault = Path(vault)
     for d in BD.CONTENT:
         base = vault / d
@@ -45,12 +51,20 @@ def iter_tasks_with_location(vault: Path):
             if p.name == "README.md":
                 continue
             rel = str(p.relative_to(vault)).replace("\\", "/")
+            heading = None
             for raw_line in p.read_text(encoding="utf-8").splitlines():
+                h = _HEADING_RE.match(raw_line)
+                if h:
+                    # the H1 is the note's own title, not a heading inside it
+                    heading = h.group(2).strip() if len(h.group(1)) > 1 else None
+                    continue
                 m = BD.TASK_RE.match(raw_line)
                 if not m:
                     continue
                 body = m.group("b")
-                text, links = _clean_no_links(body), _links_except_self(body, p.stem)
+                done_emoji = _DONE_EMOJI_RE.search(body)
+                text = _DONE_EMOJI_RE.sub("", _clean_no_links(body)).strip()
+                links = _links_except_self(body, p.stem)
                 if not text and not links:
                     continue  # unfilled template placeholder, e.g. the Daily Note's "- [ ]  #next"
                 tags = ["#" + t for t in BD.TAG_RE.findall(body)]
@@ -59,11 +73,14 @@ def iter_tasks_with_location(vault: Path):
                     "file": rel,
                     "line_text": raw_line.rstrip(),
                     "done": m.group("m").lower() == "x",
+                    "completed": fields.get("completion") or (done_emoji.group(1) if done_emoji else None),
                     "text": text,
                     "links": links,
                     "tags": tags,
                     "fields": fields,
+                    "heading": heading,
                     "project": p.stem if d == "10 Projects" else None,
+                    "area": p.stem if d == "20 Areas" else None,
                     "meeting": p.stem if d == "Meetings" else None,
                 }
 
@@ -103,12 +120,14 @@ def _extract_outcome(text: str) -> str | None:
 
 
 _DATE_PREFIX_RE = _re.compile(r"^(\d{4}-\d{2}-\d{2})")
+STATUS_TAGS = ("#next", "#waiting", "#someday")
+EVENING_TAG = "#evening"
+LOGBOOK_LIMIT = 300  # completed to-dos sent to the page; progress counts still use every one
 
 
-def _inbox_item(vault: Path, p: Path) -> dict:
-    """One inbox capture: its first line of text (task checkbox, tags and fields stripped), and when
-    it was captured (frontmatter `captured`, else the file name's date prefix)."""
-    text = p.read_text(encoding="utf-8")
+def _inbox_note(vault: Path, p: Path, text: str) -> dict:
+    """An inbox capture with no checkbox in it (a thought, a link): its first line of text, and
+    when it was captured (frontmatter `captured`, else the file name's date prefix)."""
     fm = _parse_frontmatter(text)
     body = text
     if text.startswith("---"):
@@ -116,9 +135,6 @@ def _inbox_item(vault: Path, p: Path) -> dict:
         if end != -1:
             body = text[end + 4:]
     first = next((l.strip() for l in body.splitlines() if l.strip()), "")
-    m = BD.TASK_RE.match(first)
-    if m:
-        first = m.group("b")
     first = BD._clean(_re.sub(r"^#+\s+", "", first))
     date = _DATE_PREFIX_RE.match(p.stem)
     return {
@@ -129,18 +145,52 @@ def _inbox_item(vault: Path, p: Path) -> dict:
     }
 
 
+def _link_name(value: str | None) -> str | None:
+    """`"[[Career]]"` / `[[Career|Work]]` / `Career` -> `Career`."""
+    v = (value or "").strip().strip('"').strip("'").strip()
+    m = BD.LINK_RE.search(v)
+    if m:
+        v = m.group(1).partition("|")[0].split("#")[0]
+    return v.strip() or None
+
+
+def _todo(t: dict, project_areas: dict) -> dict:
+    """One task line in the shape the page works with — Things' to-do: a When (the `scheduled`
+    field, plus #evening for This Evening), a Deadline (`due`), tags, and where it lives."""
+    tags, fields = t["tags"], t["fields"]
+    status = next((s[1:] for s in ("#waiting", "#someday", "#next") if s in tags), None)
+    ctx = next((c[1:] for c in BD.CONTEXTS if c in tags), None)
+    other = [x[1:] for x in tags if x not in BD.CONTEXTS and x not in STATUS_TAGS and x != EVENING_TAG]
+    return {
+        "file": t["file"],
+        "line_text": t["line_text"],
+        "text": t["text"],
+        "links": t["links"],
+        "done": t["done"],
+        "completed": t["completed"],
+        "status": status,
+        "context": ctx,
+        "tags": other,
+        "when": fields.get("scheduled") or None,
+        "evening": EVENING_TAG in tags,
+        "deadline": fields.get("due") or None,
+        "since": fields.get("since") or None,
+        "heading": t["heading"],
+        "project": t["project"],
+        "area": t["area"] or project_areas.get(t["project"]),
+        "meeting": t["meeting"],
+        "inbox": t["file"].startswith("00 Inbox/"),
+    }
+
+
 def collect_state(vault: Path) -> dict:
+    """Everything the page shows, shaped like Things: to-dos, projects (with progress and
+    headings) grouped into areas, the inbox, and meeting follow-ups. Which list a to-do shows
+    on (Today, Upcoming, Anytime, …) is decided on the page, against the browser's own date."""
     vault = Path(vault)
     today = _dt.date.today()
 
-    inbox_items: list[dict] = []
-    ib = vault / "00 Inbox"
-    if ib.is_dir():
-        inbox_items = [_inbox_item(vault, p) for p in ib.glob("*.md") if p.name != "README.md"]
-        inbox_items.sort(key=lambda i: (i["captured"] or "", i["file"]))
-    inbox_count = len(inbox_items)
-
-    active_projects, someday_projects = [], []
+    projects: list[dict] = []
     pj = vault / "10 Projects"
     if pj.is_dir():
         for p in sorted(pj.rglob("*.md")):
@@ -148,62 +198,65 @@ def collect_state(vault: Path) -> dict:
                 continue
             text = p.read_text(encoding="utf-8")
             fm = _parse_frontmatter(text)
-            outcome = _extract_outcome(text)
             status = fm.get("status", "")
-            rel = str(p.relative_to(vault)).replace("\\", "/")
-            if status == "active":
-                review = fm.get("review")
-                review_overdue = False
-                if review:
-                    try:
-                        review_overdue = _dt.date.fromisoformat(review) <= today
-                    except ValueError:
-                        pass
-                active_projects.append({
-                    "name": p.stem, "file": rel, "review": review, "review_overdue": review_overdue,
-                    "outcome": outcome,
-                })
-            elif status == "someday":
-                someday_projects.append({"name": p.stem, "file": rel, "outcome": outcome})
-
-    tasks_by_context: dict[str, list[dict]] = {}
-    waiting: list[dict] = []
-    due_soon: list[dict] = []
-    for t in iter_tasks_with_location(vault):
-        if t["done"]:
-            continue
-        tags, fields = t["tags"], t["fields"]
-        if "#waiting" in tags:
-            waiting.append({
-                "text": t["text"], "file": t["file"], "line_text": t["line_text"],
-                "project": t["project"], "meeting": t["meeting"], "since": fields.get("since"),
-                "links": t["links"],
+            if status not in ("active", "someday"):
+                continue
+            review = fm.get("review") or None
+            review_overdue = False
+            if review and status == "active":
+                try:
+                    review_overdue = _dt.date.fromisoformat(review) <= today
+                except ValueError:
+                    pass
+            headings = [h.group(2).strip() for h in map(_HEADING_RE.match, text.splitlines())
+                        if h and len(h.group(1)) > 1]
+            projects.append({
+                "name": p.stem, "file": str(p.relative_to(vault)).replace("\\", "/"),
+                "status": status, "area": _link_name(fm.get("area")), "outcome": _extract_outcome(text),
+                "review": review, "review_overdue": review_overdue, "headings": headings,
+                "open": 0, "done": 0,
             })
+    by_project = {p["name"]: p for p in projects}
+    project_areas = {p["name"]: p["area"] for p in projects}
+
+    area_names = set()
+    ar = vault / "20 Areas"
+    if ar.is_dir():
+        area_names.update(p.stem for p in ar.rglob("*.md") if p.name != "README.md")
+    area_files = set(area_names)
+    area_names.update(p["area"] for p in projects if p["area"])
+    areas = [{"name": n, "file": f"20 Areas/{n}.md" if n in area_files else None}
+             for n in sorted(area_names, key=str.lower)]
+
+    todos, logbook = [], []
+    task_files = set()
+    for t in iter_tasks_with_location(vault):
+        task_files.add(t["file"])
+        proj = by_project.get(t["project"])
+        if proj:
+            proj["done" if t["done"] else "open"] += 1
+        todo = _todo(t, project_areas)
+        if t["done"]:
+            logbook.append(todo)
             continue
-        if "#next" not in tags:
+        # outside projects, areas and the inbox a checkbox is only a GTD action once it's tagged
+        if not (todo["status"] or proj or todo["area"] or todo["inbox"]):
             continue
-        sched = fields.get("scheduled")
-        if sched:
-            try:
-                if _dt.date.fromisoformat(sched) > today:
-                    continue
-            except ValueError:
-                pass
-        ctx = next((c for c in BD.CONTEXTS if c in tags), "#anywhere")
-        due = fields.get("due")
-        entry = {
-            "text": t["text"], "file": t["file"], "line_text": t["line_text"],
-            "project": t["project"], "meeting": t["meeting"], "context": ctx, "due": due,
-            "links": t["links"],
-        }
-        tasks_by_context.setdefault(ctx, []).append(entry)
-        if due:
-            try:
-                due_date = _dt.date.fromisoformat(due)
-                if due_date <= today + _dt.timedelta(days=7):
-                    due_soon.append({**entry, "overdue": due_date < today})
-            except ValueError:
-                pass
+        if t["project"] and not proj:
+            continue  # a finished (status: done) project's leftovers
+        todos.append(todo)
+    logbook.sort(key=lambda x: x["completed"] or "", reverse=True)
+    todos.extend(logbook[:LOGBOOK_LIMIT])
+
+    inbox_notes: list[dict] = []
+    ib = vault / "00 Inbox"
+    if ib.is_dir():
+        for p in ib.glob("*.md"):
+            rel = str(p.relative_to(vault)).replace("\\", "/")
+            if p.name == "README.md" or rel in task_files:
+                continue
+            inbox_notes.append(_inbox_note(vault, p, p.read_text(encoding="utf-8")))
+        inbox_notes.sort(key=lambda i: (i["captured"] or "", i["file"]))
 
     meetings: list[dict] = []
     mt = vault / "Meetings"
@@ -223,12 +276,9 @@ def collect_state(vault: Path) -> dict:
 
     return {
         "vault_name": vault.resolve().name,
-        "inbox_count": inbox_count,
-        "inbox_items": inbox_items,
-        "tasks_by_context": tasks_by_context,
-        "waiting": waiting,
-        "due_soon": due_soon,
-        "active_projects": active_projects,
-        "someday_projects": someday_projects,
+        "todos": todos,
+        "projects": projects,
+        "areas": areas,
+        "inbox_notes": inbox_notes,
         "meetings": meetings,
     }

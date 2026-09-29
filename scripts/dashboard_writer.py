@@ -54,40 +54,116 @@ def _write_lines(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def complete_task(vault: Path, file: str, line_text: str) -> None:
+def _split_body(body: str):
+    """A task body as (text, tags without '#', fields, links) — what _join_body puts back."""
+    return (DP._clean_no_links(body), BD.TAG_RE.findall(body), dict(BD.FIELD_RE.findall(body)),
+            BD.LINK_RE.findall(body))
+
+
+def _join_body(text: str, tags: list[str], fields: dict, links: list[str]) -> str:
+    parts = [text] + [f"#{t}" for t in tags] + [f"[{k}:: {v.strip()}]" for k, v in fields.items()]
+    parts += [f"[[{l}]]" for l in links]
+    return " ".join(p for p in parts if p)
+
+
+def _task_parts(line: str):
+    m = _re.match(r"^(\s*-\s*\[[ xX]\]\s*)(.*)$", line)
+    if not m:
+        raise LineNotFoundError(f"not a task checkbox line: {line!r}")
+    return m.group(1), m.group(2)
+
+
+STATUSES = ("next", "waiting", "someday")
+
+
+def _set_status(tags: list[str], status: str) -> list[str]:
+    return [t for t in tags if t not in STATUSES] + [status]
+
+
+def _apply_when(tags: list[str], fields: dict, when: str, today: _dt.date) -> list[str]:
+    """Things' When for one task: "today", "evening" (This Evening), an ISO date, "someday", or
+    "anytime"/"" (no date). Dates live in [scheduled:: ], This Evening is #evening; anything given
+    a date or Anytime comes back from #someday as a #next action."""
+    if when is None:
+        return tags
+    tags = [t for t in tags if t != "evening"]
+    fields.pop("scheduled", None)
+    if when == "someday":
+        return _set_status(tags, "someday")
+    if when in ("today", "evening"):
+        fields["scheduled"] = today.isoformat()
+        if when == "evening":
+            tags.append("evening")
+    elif when and when != "anytime":
+        fields["scheduled"] = _dt.date.fromisoformat(when).isoformat()  # ValueError on junk -> 400
+    return _set_status(tags, "next") if "someday" in tags or not any(t in STATUSES for t in tags) else tags
+
+
+def complete_task(vault: Path, file: str, line_text: str) -> str:
+    """Tick the box and stamp [completion:: today], which is what files it in the Logbook."""
     path = _resolve(vault, file)
     lines = _read_lines(path)
     i = _find_line_index(lines, line_text)
-    lines[i] = _re.sub(r"^(\s*-\s*\[)[ ](\].*)$", r"\1x\2", lines[i], count=1)
+    prefix, body = _task_parts(lines[i])
+    text, tags, fields, links = _split_body(body)
+    fields["completion"] = _dt.date.today().isoformat()
+    lines[i] = _re.sub(r"\[ \]", "[x]", prefix, count=1) + _join_body(text, tags, fields, links)
     _write_lines(path, lines)
+    return lines[i]
+
+
+def uncomplete_task(vault: Path, file: str, line_text: str) -> str:
+    path = _resolve(vault, file)
+    lines = _read_lines(path)
+    i = _find_line_index(lines, line_text)
+    prefix, body = _task_parts(lines[i])
+    text, tags, fields, links = _split_body(body)
+    fields.pop("completion", None)
+    text = _re.sub(r"\s*✅\s*\d{4}-\d{2}-\d{2}", "", text).strip()
+    lines[i] = _re.sub(r"\[[xX]\]", "[ ]", prefix, count=1) + _join_body(text, tags, fields, links)
+    _write_lines(path, lines)
+    return lines[i]
+
+
+def _is_blank_capture(lines: list[str]) -> bool:
+    """An inbox file with nothing left but its frontmatter."""
+    body = "\n".join(lines)
+    if body.startswith("---"):
+        end = body.find("\n---", 3)
+        body = body[end + 4:] if end != -1 else body
+    return not body.strip()
+
+
+def _remove_line(vault: Path, file: str, line_text: str) -> str:
+    path = _resolve(vault, file)
+    lines = _read_lines(path)
+    i = _find_line_index(lines, line_text)
+    removed = lines.pop(i)
+    # an inbox capture is one file per item: once its only line is gone, so is the capture
+    if file.startswith("00 Inbox/") and _is_blank_capture(lines):
+        path.unlink()
+    else:
+        _write_lines(path, lines)
+    return removed
 
 
 def delete_task(vault: Path, file: str, line_text: str) -> None:
-    path = _resolve(vault, file)
-    lines = _read_lines(path)
-    i = _find_line_index(lines, line_text)
-    del lines[i]
-    _write_lines(path, lines)
+    _remove_line(vault, file, line_text)
 
 
 def edit_task(vault: Path, file: str, line_text: str,
                new_text: str | None = None, new_due: str | None = None,
-               new_context: str | None = None) -> str:
+               new_context: str | None = None, new_when: str | None = None) -> str:
     path = _resolve(vault, file)
     lines = _read_lines(path)
     i = _find_line_index(lines, line_text)
-    m = _re.match(r"^(\s*-\s*\[[ xX]\]\s*)(.*)$", lines[i])
-    if not m:
-        raise LineNotFoundError(f"not a task checkbox line: {lines[i]!r}")
-    prefix, body = m.group(1), m.group(2)
-
-    tags = BD.TAG_RE.findall(body)
-    fields = dict(BD.FIELD_RE.findall(body))
-    links = BD.LINK_RE.findall(body)
-    text = new_text.strip() if new_text is not None else DP._clean_no_links(body)
+    prefix, body = _task_parts(lines[i])
+    text, tags, fields, links = _split_body(body)
+    if new_text is not None:
+        text = new_text.strip()
 
     if new_due:
-        fields["due"] = new_due
+        fields["due"] = _dt.date.fromisoformat(new_due).isoformat()
     elif new_due == "":  # an emptied date field means "no due date"
         fields.pop("due", None)
 
@@ -95,12 +171,10 @@ def edit_task(vault: Path, file: str, line_text: str,
         ctx_bare = new_context.lstrip("#")
         tags = [t for t in tags if f"#{t}" not in BD.CONTEXTS] + [ctx_bare]
 
-    parts = [text]
-    parts += [f"#{t}" for t in tags]
-    parts += [f"[{k}:: {v}]" for k, v in fields.items()]
-    parts += [f"[[{l}]]" for l in links]
-    new_body = " ".join(p for p in parts if p)
-    lines[i] = prefix + new_body
+    if new_when is not None:
+        tags = _apply_when(tags, fields, new_when, _dt.date.today())
+
+    lines[i] = prefix + _join_body(text, tags, fields, links)
     _write_lines(path, lines)
     return lines[i]
 
@@ -113,58 +187,150 @@ def _slugify(text: str) -> str:
     return _SLUG_RE.sub("-", text.lower()).strip("-") or "item"
 
 
-def create_task(vault: Path, text: str, context: str, project: str | None = None) -> dict:
-    vault = Path(vault)
-    today = _dt.date.today().isoformat()
-    ctx = context if context.startswith("#") else f"#{context}"
+NEXT_ACTIONS = "## Next actions"
 
-    if not project:
-        slug = _slugify(text)[:40]
-        rel = f"00 Inbox/{today} {slug}.md"
-        path = vault / rel
-        n = 2
-        while path.exists():
-            rel = f"00 Inbox/{today} {slug}-{n}.md"
-            path = vault / rel
-            n += 1
-        line_text = f"- [ ] {text} #next {ctx}"
-        content = f"---\ntype: inbox\ncaptured: {today}\n---\n{line_text}\n"
-        path.write_text(content, encoding="utf-8")
-        return {"file": rel, "line_text": line_text}
 
-    proj_path = _resolve(vault, f"10 Projects/{project}.md")
-    if not proj_path.is_file():
-        raise FileNotFoundError(f"project not found: {project}")
-    lines = _read_lines(proj_path)
-    new_line = f"- [ ] {text} #next {ctx}"
-    heading = "## Next actions"
+def _insert_under_heading(lines: list[str], heading: str, new_line: str) -> list[str]:
+    """Add a task at the end of the checkbox run under `heading` (creating the heading if absent)."""
     try:
         h_idx = next(i for i, l in enumerate(lines) if l.strip() == heading)
     except StopIteration:
-        lines = lines + ["", heading, "", new_line]
-    else:
-        insert_at = h_idx + 1
-        while insert_at < len(lines) and lines[insert_at].strip() == "":
-            insert_at += 1
-        j = insert_at
-        while j < len(lines) and lines[j].lstrip().startswith("- ["):
-            j += 1
-        lines.insert(j, new_line)
-    _write_lines(proj_path, lines)
-    rel = str(proj_path.relative_to(vault)).replace("\\", "/")
-    return {"file": rel, "line_text": new_line}
+        return lines + ["", heading, "", new_line]
+    insert_at = h_idx + 1
+    while insert_at < len(lines) and lines[insert_at].strip() == "":
+        insert_at += 1
+    j = insert_at
+    while j < len(lines) and lines[j].lstrip().startswith("- ["):
+        j += 1
+    lines.insert(j, new_line)
+    return lines
 
 
-def create_project(vault: Path, title: str) -> str:
+def _container_path(vault: Path, project: str | None, area: str | None) -> Path:
+    if project:
+        path = _resolve(vault, f"10 Projects/{project}.md")
+        if not path.is_file():
+            raise FileNotFoundError(f"project not found: {project}")
+        return path
+    path = _resolve(vault, f"20 Areas/{area}.md")
+    if not path.is_file():
+        raise FileNotFoundError(f"area not found: {area}")
+    return path
+
+
+def _write_capture(vault: Path, text_for_name: str, line: str) -> dict:
+    today = _dt.date.today().isoformat()
+    slug = _slugify(DP._clean_no_links(text_for_name))[:40]
+    rel = f"00 Inbox/{today} {slug}.md"
+    n = 2
+    while (Path(vault) / rel).exists():
+        rel = f"00 Inbox/{today} {slug}-{n}.md"
+        n += 1
+    (Path(vault) / "00 Inbox").mkdir(parents=True, exist_ok=True)
+    (Path(vault) / rel).write_text(f"---\ntype: inbox\ncaptured: {today}\n---\n{line}\n", encoding="utf-8")
+    return {"file": rel, "line_text": line}
+
+
+def _place(vault: Path, line: str, project: str | None, area: str | None,
+           heading: str | None = None) -> dict:
+    """Put a task line in a project or area note (under `heading`, default Next actions), or,
+    with neither, capture it to 00 Inbox/ as its own file."""
+    if not project and not area:
+        return _write_capture(vault, _split_body(_task_parts(line)[1])[0], line)
+    path = _container_path(vault, project, area)
+    lines = _insert_under_heading(_read_lines(path), f"## {heading}" if heading else NEXT_ACTIONS, line)
+    _write_lines(path, lines)
+    return {"file": str(path.relative_to(Path(vault).resolve())).replace("\\", "/"), "line_text": line}
+
+
+def create_task(vault: Path, text: str, context: str | None = "anywhere", project: str | None = None,
+                area: str | None = None, when: str | None = None, deadline: str | None = None,
+                status: str = "next", heading: str | None = None) -> dict:
+    """A new to-do. Tags typed into the text (#phone) are kept; a context is only added when the
+    text doesn't already name one. `when` takes the same values as edit_task's new_when."""
+    if status not in STATUSES:
+        raise ValueError(f"unknown status: {status}")
+    if project or area:
+        _container_path(vault, project, area)  # fail before touching anything
+    body_text, tags, fields, links = _split_body(text.strip())
+    status = next((t for t in tags if t in STATUSES), status)  # a status typed into the text wins
+    tags = [t for t in tags if t not in STATUSES] + [status]
+    ctx = (context or "").lstrip("#")
+    if ctx and not any(f"#{t}" in BD.CONTEXTS for t in tags):
+        tags.append(ctx)
+    if status == "waiting":
+        fields.setdefault("since", _dt.date.today().isoformat())
+    if when:
+        tags = _apply_when(tags, fields, when, _dt.date.today())
+    if deadline:
+        fields["due"] = _dt.date.fromisoformat(deadline).isoformat()
+    line = "- [ ] " + _join_body(body_text, tags, fields, links)
+    return _place(vault, line, project, area, heading)
+
+
+def move_task(vault: Path, file: str, line_text: str, project: str | None = None,
+              area: str | None = None) -> dict:
+    """Things' Quick Move: the line leaves its note and lands under the target project's (or
+    area's) Next actions — or back in the inbox, with neither. Moving the last line out of an
+    inbox capture removes that capture: the item has been processed."""
+    if project or area:
+        target = _container_path(vault, project, area)
+        if target == _resolve(vault, file):
+            return {"file": file, "line_text": line_text}
+    elif file.startswith("00 Inbox/"):
+        return {"file": file, "line_text": line_text}
+    line = _remove_line(vault, file, line_text).strip()
+    return _place(vault, line, project, area)
+
+
+def _update_frontmatter(path: Path, updates: dict) -> None:
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        text = "---\n---\n" + text
+    end = text.find("\n---", 3)
+    head, rest = text[3:end].strip("\n").splitlines(), text[end:]
+    for key, value in updates.items():
+        for i, l in enumerate(head):
+            if l.partition(":")[0].strip() == key:
+                head[i] = f"{key}: {value}"
+                break
+        else:
+            head.append(f"{key}: {value}")
+    path.write_text("---\n" + "\n".join(head) + rest, encoding="utf-8")
+
+
+def set_project_status(vault: Path, name: str, status: str) -> None:
+    """active | someday | done — Complete Project, or move it to/from Someday."""
+    if status not in ("active", "someday", "done"):
+        raise ValueError(f"unknown project status: {status}")
+    path = _container_path(vault, name, None)
+    updates = {"status": status}
+    if status == "done":
+        updates["completed"] = _dt.date.today().isoformat()
+    _update_frontmatter(path, updates)
+
+
+def mark_project_reviewed(vault: Path, name: str, days: int = 7) -> str:
+    """Push the project's next review out `days` from today; returns the new review date."""
+    nxt = (_dt.date.today() + _dt.timedelta(days=days)).isoformat()
+    _update_frontmatter(_container_path(vault, name, None), {"review": nxt})
+    return nxt
+
+
+def create_project(vault: Path, title: str, area: str | None = None) -> str:
     vault = Path(vault)
     template = (vault / "_templates" / "Project.md").read_text(encoding="utf-8")
     today = _dt.date.today().isoformat()
     content = template.replace("{{title}}", title)
     content = _re.sub(r"\{\{date:YYYY-MM-DD\}\}", today, content)
+    if area:
+        content = _re.sub(r"(?m)^area:.*$", f'area: "[[{area}]]"', content, count=1)
     dest = _resolve(vault, f"10 Projects/{title}.md")
     if dest.exists():
         raise FileExistsError(f"project already exists: {title}")
     dest.write_text(content, encoding="utf-8")
+    if area and "area:" not in content:
+        _update_frontmatter(dest, {"area": f'"[[{area}]]"'})
     return str(dest.relative_to(Path(vault).resolve())).replace("\\", "/")
 
 
