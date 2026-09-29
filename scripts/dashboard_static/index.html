@@ -3,63 +3,68 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GTD Dashboard</title>
+<title>Second Brain</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="topbar-row">
-    <h1>GTD</h1>
-    <nav class="tabs" id="tabs" aria-label="Pages"></nav>
-    <div class="toolbar">
-      <input id="search" type="text" placeholder="Search… ( / )" aria-label="Search" dir="auto" autocomplete="off">
-      <button id="record-btn" type="button" title="Record a meeting (r)">● Record</button>
-      <button id="new-task-btn" type="button" title="New task (n)">+ New</button>
-      <button id="help-btn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
-      <button id="theme-toggle" type="button" title="Toggle light/dark" aria-label="Toggle light/dark">◐</button>
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Lists">
+    <button type="button" class="sb-find" id="find-btn" title="Quick Find (/)">
+      <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.7 12.7 17 17"/></svg>
+      <span>Quick Find</span><kbd>/</kbd>
+    </button>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <footer class="sb-foot">
+      <form id="new-project-form" class="sb-new-project" hidden>
+        <input id="new-project-title" type="text" placeholder="New project name" autocomplete="off" dir="auto" aria-label="New project name">
+      </form>
+      <button type="button" class="sb-foot-btn" id="new-project-btn" title="New Project">
+        <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg><span>New Project</span>
+      </button>
+      <button type="button" class="icon-btn" id="theme-toggle" title="Light / dark" aria-label="Toggle light or dark"></button>
+      <button type="button" class="icon-btn" id="help-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"></button>
+    </footer>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <main class="content">
+    <div class="content-top">
+      <button type="button" class="icon-btn menu-btn" id="menu-btn" aria-label="Show lists"></button>
     </div>
-  </div>
-</header>
-<main>
-  <div id="filter-banner" class="filter-banner" hidden></div>
-  <section class="page" id="page-today"><div id="body-today"></div></section>
-  <section class="page" id="page-week" hidden><div id="body-week"></div></section>
-  <section class="page" id="page-tasks" hidden><div id="body-tasks"></div></section>
-  <section class="page" id="page-inbox" hidden><div id="body-inbox"></div></section>
-  <section class="page" id="page-waiting" hidden><div id="body-waiting"></div></section>
-  <section class="page" id="page-projects" hidden><div id="body-projects"></div></section>
-</main>
-<div id="quick-add" class="modal hidden">
-  <form id="quick-add-form">
-    <div class="modal-head">
-      <h2>New task</h2>
-      <button id="quick-add-close" type="button" title="Close" aria-label="Close">×</button>
+    <div class="scroll" id="scroll">
+      <div class="view" id="view"></div>
     </div>
-    <input id="quick-add-text" type="text" placeholder="Task text" autocomplete="off" dir="auto">
-    <select id="quick-add-context">
-      <option value="computer">computer</option>
-      <option value="phone">phone</option>
-      <option value="errands">errands</option>
-      <option value="home">home</option>
-      <option value="office">office</option>
-      <option value="anywhere">anywhere</option>
-      <option value="agenda">agenda</option>
-    </select>
-    <input id="quick-add-project" type="text" placeholder="Project (optional)" autocomplete="off" dir="auto" list="project-choices">
-    <datalist id="project-choices"></datalist>
-    <p id="quick-add-error" class="form-error" hidden></p>
-    <button type="submit">Add task</button>
-  </form>
+    <footer class="bottombar" aria-label="Actions">
+      <button type="button" class="bar-btn" id="new-btn" title="New To-Do (n)" aria-label="New To-Do"></button>
+      <button type="button" class="bar-btn" id="when-btn" title="When (w)" aria-label="When"></button>
+      <button type="button" class="bar-btn" id="move-btn" title="Move (m)" aria-label="Move"></button>
+      <button type="button" class="bar-btn" id="search-btn" title="Quick Find (/)" aria-label="Quick Find"></button>
+      <span class="bar-gap"></span>
+      <button type="button" class="bar-btn bar-record" id="record-btn" title="Record a meeting (r)">Record</button>
+    </footer>
+  </main>
 </div>
-<div id="detail-modal" class="modal hidden">
-  <div class="detail-panel">
-    <div class="modal-head">
-      <h2 id="detail-title">Detail</h2>
-      <button id="detail-modal-close" type="button" title="Close" aria-label="Close">×</button>
+
+<div class="popover" id="popover" hidden></div>
+
+<div class="overlay" id="finder" hidden>
+  <div class="finder" role="dialog" aria-label="Quick Find">
+    <div class="finder-input">
+      <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.7 12.7 17 17"/></svg>
+      <input id="finder-input" type="text" placeholder="Quick Find — lists, projects, tags, to-dos" autocomplete="off" dir="auto" aria-label="Quick Find">
     </div>
-    <div id="detail-body"></div>
+    <ul class="finder-results" id="finder-results"></ul>
   </div>
 </div>
+
+<div class="overlay" id="dialog" hidden>
+  <div class="dialog" role="dialog" aria-labelledby="dialog-title">
+    <div class="dialog-head"><h2 id="dialog-title"></h2><button type="button" class="icon-btn" id="dialog-close" aria-label="Close"></button></div>
+    <div id="dialog-body"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
 <script src="logic.js"></script>
 <script src="recorder.js"></script>
 <script src="app.js"></script>

@@ -24,7 +24,7 @@ def test_complete_task_flips_checkbox(tmp_path):
     _mk_vault(tmp_path)
     W.complete_task(tmp_path, "10 Projects/P.md", "- [ ] Pick SSG #next #computer")
     text = (tmp_path / "10 Projects" / "P.md").read_text()
-    assert "- [x] Pick SSG #next #computer" in text
+    assert f"- [x] Pick SSG #next #computer [completion:: {dt.date.today().isoformat()}]" in text
     assert "- [ ] Buy domain #next #computer" in text  # untouched
 
 def test_complete_task_missing_line_raises(tmp_path):
@@ -261,3 +261,148 @@ def test_start_background_transcription_runs_transcription(tmp_path, monkeypatch
     monkeypatch.setattr(W, "run_transcription", lambda vault: calls.append(vault) or "ok")
     W.start_background_transcription(tmp_path).join(timeout=5)
     assert calls == [tmp_path]
+
+
+TODAY = dt.date.today().isoformat()
+LINE = "- [ ] Pick SSG #next #computer"
+
+
+def _p(vault):
+    return (vault / "10 Projects" / "P.md").read_text()
+
+
+def test_uncomplete_task_reopens_it_and_drops_the_completion_date(tmp_path):
+    _mk_vault(tmp_path)
+    done = W.complete_task(tmp_path, "10 Projects/P.md", LINE)
+    assert W.uncomplete_task(tmp_path, "10 Projects/P.md", done) == LINE
+    assert LINE in _p(tmp_path)
+
+
+def test_uncomplete_task_drops_a_tasks_plugin_completion_emoji(tmp_path):
+    (tmp_path / "Journal").mkdir()
+    (tmp_path / "Journal" / "d.md").write_text("- [x] Walk #next \u2705 2026-09-01\n", encoding="utf-8")
+    assert W.uncomplete_task(tmp_path, "Journal/d.md", "- [x] Walk #next \u2705 2026-09-01") == "- [ ] Walk #next"
+
+
+@pytest.mark.parametrize("when,expected", [
+    ("today", f"- [ ] Pick SSG #next #computer [scheduled:: {TODAY}]"),
+    ("evening", f"- [ ] Pick SSG #next #computer #evening [scheduled:: {TODAY}]"),
+    ("2026-12-01", "- [ ] Pick SSG #next #computer [scheduled:: 2026-12-01]"),
+    ("someday", "- [ ] Pick SSG #computer #someday"),
+    ("anytime", LINE),
+    ("", LINE),
+])
+def test_edit_task_sets_when(tmp_path, when, expected):
+    _mk_vault(tmp_path)
+    assert W.edit_task(tmp_path, "10 Projects/P.md", LINE, new_when=when) == expected
+    assert expected in _p(tmp_path)
+
+
+def test_edit_task_when_brings_a_someday_task_back_and_clears_evening(tmp_path):
+    _mk_vault(tmp_path)
+    evening = W.edit_task(tmp_path, "10 Projects/P.md", LINE, new_when="evening")
+    someday = W.edit_task(tmp_path, "10 Projects/P.md", evening, new_when="someday")
+    assert someday == "- [ ] Pick SSG #computer #someday"
+    back = W.edit_task(tmp_path, "10 Projects/P.md", someday, new_when="2026-12-01")
+    assert back == "- [ ] Pick SSG #computer #next [scheduled:: 2026-12-01]"
+
+
+def test_edit_task_when_keeps_a_waiting_task_waiting(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "10 Projects" / "P.md").write_text("- [ ] Figures #waiting [since:: 2026-09-01] [[Sam]]\n")
+    line = W.edit_task(tmp_path, "10 Projects/P.md", "- [ ] Figures #waiting [since:: 2026-09-01] [[Sam]]",
+                       new_when="2026-10-01")
+    assert line == "- [ ] Figures #waiting [since:: 2026-09-01] [scheduled:: 2026-10-01] [[Sam]]"
+
+
+def test_edit_task_rejects_a_malformed_date(tmp_path):
+    _mk_vault(tmp_path)
+    with pytest.raises(ValueError):
+        W.edit_task(tmp_path, "10 Projects/P.md", LINE, new_when="next tuesday")
+    assert LINE in _p(tmp_path)
+
+
+def test_create_task_with_when_deadline_and_a_typed_context(tmp_path):
+    _mk_vault(tmp_path)
+    r = W.create_task(tmp_path, "Call the bank #phone", "anywhere", project="P", when="evening",
+                      deadline="2026-10-02")
+    assert r["line_text"] == f"- [ ] Call the bank #phone #next #evening [scheduled:: {TODAY}] [due:: 2026-10-02]"
+    assert r["line_text"] in _p(tmp_path)
+
+
+def test_create_task_someday_and_waiting(tmp_path):
+    _mk_vault(tmp_path)
+    assert W.create_task(tmp_path, "Learn to sail", None, project="P", status="someday")["line_text"] == \
+        "- [ ] Learn to sail #someday"
+    assert W.create_task(tmp_path, "Figures from Sam", None, project="P", status="waiting")["line_text"] == \
+        f"- [ ] Figures from Sam #waiting [since:: {TODAY}]"
+
+
+def test_create_task_in_an_area_note(tmp_path):
+    _mk_vault(tmp_path)
+    (tmp_path / "20 Areas").mkdir()
+    (tmp_path / "20 Areas" / "Health.md").write_text("# Health\n")
+    r = W.create_task(tmp_path, "Book a checkup", "phone", area="Health")
+    assert r["file"] == "20 Areas/Health.md"
+    assert (tmp_path / "20 Areas" / "Health.md").read_text().endswith("## Next actions\n\n- [ ] Book a checkup #next #phone\n")
+    with pytest.raises(FileNotFoundError):
+        W.create_task(tmp_path, "x", "phone", area="Nope")
+
+
+def test_move_task_from_the_inbox_to_a_project_removes_the_capture(tmp_path):
+    _mk_vault(tmp_path)
+    cap = W.create_task(tmp_path, "Compare hosting", "computer")
+    r = W.move_task(tmp_path, cap["file"], cap["line_text"], project="P")
+    assert r == {"file": "10 Projects/P.md", "line_text": cap["line_text"]}
+    assert not (tmp_path / cap["file"]).exists()
+    assert "- [ ] Buy domain #next #computer\n- [ ] Compare hosting #next #computer\n" in _p(tmp_path)
+
+
+def test_move_task_between_projects_and_back_to_the_inbox(tmp_path):
+    _mk_vault(tmp_path)
+    W.move_task(tmp_path, "10 Projects/P.md", LINE, project="NoHeading")
+    assert LINE not in _p(tmp_path)
+    assert (tmp_path / "10 Projects" / "NoHeading.md").read_text().endswith("## Next actions\n\n" + LINE + "\n")
+    r = W.move_task(tmp_path, "10 Projects/NoHeading.md", LINE)
+    assert r["file"].startswith("00 Inbox/") and LINE in (tmp_path / r["file"]).read_text()
+
+
+def test_move_task_to_where_it_already_is_changes_nothing(tmp_path):
+    _mk_vault(tmp_path)
+    before = _p(tmp_path)
+    assert W.move_task(tmp_path, "10 Projects/P.md", LINE, project="P")["file"] == "10 Projects/P.md"
+    assert _p(tmp_path) == before
+
+
+def test_delete_task_removes_an_emptied_inbox_capture(tmp_path):
+    _mk_vault(tmp_path)
+    cap = W.create_task(tmp_path, "Stray thought", "anywhere")
+    W.delete_task(tmp_path, cap["file"], cap["line_text"])
+    assert not (tmp_path / cap["file"]).exists()
+
+
+def test_mark_project_reviewed_and_status(tmp_path):
+    _mk_vault(tmp_path)
+    nxt = W.mark_project_reviewed(tmp_path, "P", days=7)
+    assert nxt == (dt.date.today() + dt.timedelta(days=7)).isoformat()
+    assert f"review: {nxt}" in _p(tmp_path)
+    W.mark_project_reviewed(tmp_path, "P", days=14)
+    assert _p(tmp_path).count("review:") == 1
+    W.set_project_status(tmp_path, "P", "done")
+    text = _p(tmp_path)
+    assert "status: done" in text and f"completed: {TODAY}" in text and "status: active" not in text
+    assert text.endswith("- [ ] Buy domain #next #computer\n")  # body untouched
+    with pytest.raises(ValueError):
+        W.set_project_status(tmp_path, "P", "paused")
+
+
+def test_create_project_in_an_area(tmp_path):
+    _mk_vault(tmp_path)
+    rel = W.create_project(tmp_path, "Garden", area="Home")
+    assert 'area: "[[Home]]"' in (tmp_path / rel).read_text()
+
+
+def test_create_task_keeps_a_status_typed_into_the_text(tmp_path):
+    _mk_vault(tmp_path)
+    assert W.create_task(tmp_path, "Learn to sail #someday", None, project="P")["line_text"] == \
+        "- [ ] Learn to sail #someday"

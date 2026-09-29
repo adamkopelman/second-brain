@@ -37,7 +37,7 @@ expected here — it is not a violation of "never fabricate."
        - tied to a specific person's next meeting/conversation with them → `#agenda`
        - no clear location/tool signal → `#anywhere`
        - genuinely ambiguous even after reading the whole transcript → `#unknown` (the dashboard's
-         "Needs triage" card lets the user resolve these later — never guess just to avoid it)
+         Today page flags these so the user can tag them later — never guess just to avoid it)
      - Set `summary_status: done`.
 4. Report each note's result concisely (one line per note: summarized with N action items, or "no
    speech detected," etc.).

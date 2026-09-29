@@ -11,7 +11,7 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 | GTD skills | `/gtd-capture`, `/gtd-process-inbox`, `/gtd-next-actions`, `/gtd-weekly-review`, `/gtd-status`, `/gtd-dashboard`. |
 | Outlook | `/gtd-outlook` pulls email/calendar via the `outlook-mcp-rs` MCP server. |
 | Live dashboard | `Dashboard.md` — a visual KPI + card grid (Dataview JS) with a clickable Actions row (QuickAdd) to capture a task, add a next action to a project, or start a new project; `Dashboard (lists).md` is a no-JS fallback. |
-| Local browser dashboard | `scripts/dashboard_server.py` — a second, independent live view with full task CRUD, no Obsidian required. See `docs/gtd/local-dashboard.md`. |
+| Local browser dashboard | `scripts/dashboard_server.py` — a Things 3–style app over the same files (Inbox, Today/This Evening, Upcoming, Anytime, Someday, Waiting, Logbook; Areas → Projects), with full to-do editing, no Obsidian required. See `docs/gtd/local-dashboard.md`. |
 | Meeting recording | 🎙️/💬 ribbon buttons (`record-meeting` plugin) to record a meeting to WAV and transcribe it — fully offline, vendored multilingual `whisper.cpp`. Summarizing into notes/decisions/action items runs separately in Claude Code (`gtd-summarize-meetings`). See `docs/gtd/meeting-recording.md`. |
 | Home board | `Home.canvas` — a spatial launchpad (Obsidian Canvas) embedding the dashboard + link-cards. |
 | Portable dashboard | `dashboard.html` — self-contained, any browser (`/gtd-dashboard`). |
@@ -30,6 +30,6 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 ## Conventions (quick reference)
 - Contexts: `#computer` `#phone` `#errands` `#home` `#office` `#anywhere` `#agenda`
 - Status: `#next` (do now) · `#waiting` (delegated) · `#someday`
-- Fields: `[due:: YYYY-MM-DD]` · `[scheduled:: YYYY-MM-DD]` · `[since:: YYYY-MM-DD]`
+- Fields: `[due:: YYYY-MM-DD]` · `[scheduled:: YYYY-MM-DD]` · `[since:: YYYY-MM-DD]` · `[completion:: YYYY-MM-DD]`; `#evening` = This Evening
 
 Full details: `30 Resources/GTD System.md`. Design/plan: `docs/superpowers/`. Harness guide: `AGENTS.md`.

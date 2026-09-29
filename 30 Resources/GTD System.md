@@ -27,9 +27,11 @@ Checkboxes inside project/daily notes, with tags + inline fields:
 
 Contexts (one per action): #computer #phone #errands #home #office #anywhere #agenda #unknown (pair
 #agenda with [[Person]]; #unknown is auto-assigned when meeting summarization can't infer a context —
-resolve it via the local dashboard's "Needs triage" card). Status: #next (ready now — shown on
-dashboard), #waiting (delegated; + [[Person]] + [since:: DATE]), #someday. Fields: [due:: DATE],
-[scheduled:: DATE] (tickler), [since:: DATE].
+resolve it from the local dashboard: Today links to them, or filter Anytime by the "unknown" tag).
+Status: #next (ready now — shown on dashboard), #waiting (delegated; + [[Person]] + [since:: DATE]),
+#someday. Fields: [due:: DATE] (a deadline), [scheduled:: DATE] (tickler — the dashboard's "When"),
+[since:: DATE], [completion:: DATE] (stamped when a task is checked off; files it in the Logbook).
+#evening + today's [scheduled:: ] puts a task under the dashboard's "This Evening".
 
 Rule of thumb: every active project has at least one #next action.
 

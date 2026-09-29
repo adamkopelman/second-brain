@@ -116,23 +116,38 @@ def make_handler(vault: Path, calendar=None, auto_transcribe: bool = False):
             try:
                 data = self._read_json()
                 if path == "/api/complete-task":
-                    W.complete_task(vault, data["file"], data["line_text"])
-                    self._send_json({"ok": True})
+                    line = W.complete_task(vault, data["file"], data["line_text"])
+                    self._send_json({"ok": True, "line_text": line})
+                elif path == "/api/uncomplete-task":
+                    line = W.uncomplete_task(vault, data["file"], data["line_text"])
+                    self._send_json({"ok": True, "line_text": line})
                 elif path == "/api/delete-task":
                     W.delete_task(vault, data["file"], data["line_text"])
                     self._send_json({"ok": True})
                 elif path == "/api/edit-task":
                     new_line = W.edit_task(vault, data["file"], data["line_text"],
                                             data.get("new_text"), data.get("new_due"),
-                                            data.get("new_context"))
+                                            data.get("new_context"), data.get("new_when"))
                     self._send_json({"ok": True, "line_text": new_line})
+                elif path == "/api/move-task":
+                    result = W.move_task(vault, data["file"], data["line_text"],
+                                         data.get("project"), data.get("area"))
+                    self._send_json({"ok": True, **result})
                 elif path == "/api/new-task":
                     result = W.create_task(vault, data["text"], data.get("context", "anywhere"),
-                                            data.get("project"))
+                                            data.get("project"), data.get("area"), data.get("when"),
+                                            data.get("deadline"), data.get("status") or "next",
+                                            data.get("heading"))
                     self._send_json({"ok": True, **result})
                 elif path == "/api/new-project":
-                    rel = W.create_project(vault, data["title"])
+                    rel = W.create_project(vault, data["title"], data.get("area"))
                     self._send_json({"ok": True, "file": rel})
+                elif path == "/api/project-status":
+                    W.set_project_status(vault, data["project"], data["status"])
+                    self._send_json({"ok": True})
+                elif path == "/api/review-project":
+                    review = W.mark_project_reviewed(vault, data["project"], int(data.get("days", 7)))
+                    self._send_json({"ok": True, "review": review})
                 elif path == "/api/transcribe":
                     output = W.run_transcription(vault)
                     self._send_json({"ok": True, "output": output})
@@ -146,6 +161,8 @@ def make_handler(vault: Path, calendar=None, auto_transcribe: bool = False):
                 self._send_json({"error": str(e)}, 400)
             except KeyError as e:
                 self._send_json({"error": f"missing field: {e}"}, 400)
+            except ValueError as e:  # a malformed date, status or number
+                self._send_json({"error": str(e)}, 400)
             except Exception as e:
                 self._send_json({"error": "internal error: " + str(e)}, 500)
 
