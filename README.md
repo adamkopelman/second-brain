@@ -11,6 +11,7 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 | GTD skills | `/gtd-capture`, `/gtd-process-inbox`, `/gtd-next-actions`, `/gtd-weekly-review`, `/gtd-status`, `/gtd-dashboard`. |
 | Outlook | `/gtd-outlook` pulls email/calendar via the `outlook-mcp-rs` MCP server. |
 | Live dashboard | `Dashboard.md` — a visual KPI + card grid (Dataview JS) with a clickable Actions row (QuickAdd) to capture a task, add a next action to a project, or start a new project; `Dashboard (lists).md` is a no-JS fallback. |
+| Quick Capture (Windows) | TickTick-style global shortcuts: `Ctrl+Alt+A` adds a task to the inbox from any app, `Ctrl+Alt+T` to Today, `Ctrl+Alt+V` captures the clipboard. A tray script with nothing to install. See `docs/gtd/quick-capture.md`. |
 | Local browser dashboard | `scripts/dashboard_server.py` — a Things 3–style app over the same files (Inbox, Today/This Evening, Upcoming, Anytime, Someday, Waiting, Logbook; Areas → Projects), with full to-do editing, no Obsidian required. See `docs/gtd/local-dashboard.md`. |
 | Meeting recording | 🎙️/💬 ribbon buttons (`record-meeting` plugin) to record a meeting to WAV and transcribe it — fully offline, vendored multilingual `whisper.cpp`. Summarizing into notes/decisions/action items runs separately in Claude Code (`gtd-summarize-meetings`). See `docs/gtd/meeting-recording.md`. |
 | Home board | `Home.canvas` — a spatial launchpad (Obsidian Canvas) embedding the dashboard + link-cards. |
@@ -24,7 +25,9 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 4. (Recommended) Install **Claudian** to run these skills inside Obsidian; (optional) **Smart Second
    Brain** for semantic search. See `docs/gtd/portability.md` and `docs/gtd/obsidian-plugins.md`.
 5. (Optional) Wire Outlook — see `docs/gtd/outlook.md`.
-6. Read `30 Resources/GTD System.md` for conventions. Capture with `/gtd-capture`; review weekly
+6. (Optional, Windows) Global capture shortcuts: double-click `scripts\quick_capture\install.cmd`, then
+   press `Ctrl+Alt+A` anywhere — see `docs/gtd/quick-capture.md`.
+7. Read `30 Resources/GTD System.md` for conventions. Capture with `/gtd-capture`; review weekly
    with `/gtd-weekly-review`.
 
 ## Conventions (quick reference)
