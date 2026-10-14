@@ -1,0 +1,14 @@
+{
+  "_comment": "Quick Capture settings. Restart it after editing (tray icon -> Exit, then run start.cmd). Keys use Windows Forms names: A-Z, 0-9, F1-F12, Space, OemPeriod... Set a hotkey to \"\" to turn it off.",
+  "vault": "",
+  "hotkeys": {
+    "quick_add": "Ctrl+Alt+A",
+    "add_today": "Ctrl+Alt+T",
+    "clipboard": "Ctrl+Alt+V",
+    "dashboard": "Ctrl+Alt+D"
+  },
+  "dashboard_url": "http://localhost:8787",
+  "start_dashboard_server": true,
+  "python": "python",
+  "notify": true
+}

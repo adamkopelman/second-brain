@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick Capture Demo</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --fg: #111827; --muted: #6b7280; --card: #ffffff; --line: #e5e7eb;
+    --accent: #2563eb; --accent-soft: #dbeafe; --code: #0f172a; --ok: #16a34a; --warn: #b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0f17; --fg: #e5e7eb; --muted: #9ca3af; --card: #151b26; --line: #263041;
+      --accent: #60a5fa; --accent-soft: #1e3a5f; --code: #020617; --ok: #4ade80; --warn: #fbbf24;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0f17; --fg: #e5e7eb; --muted: #9ca3af; --card: #151b26; --line: #263041;
+    --accent: #60a5fa; --accent-soft: #1e3a5f; --code: #020617; --ok: #4ade80; --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 40px 0 6px; }
+  p.lead { color: var(--muted); margin: 0 0 24px; }
+  kbd { font: 600 12px/1 "Segoe UI", system-ui, sans-serif; padding: 4px 7px; border-radius: 5px; border: 1px solid var(--line);
+        border-bottom-width: 2px; background: var(--card); color: var(--fg); white-space: nowrap; }
+  code { font: 13px/1.4 Consolas, ui-monospace, monospace; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .key { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .key .combo { display: flex; gap: 4px; align-items: center; margin-bottom: 6px; }
+  .key b { display: block; font-size: 14px; }
+  .key span { color: var(--muted); font-size: 13px; }
+
+  /* ---- Windows desktop mock (always "Windows light", regardless of page theme) */
+  .scene { margin: 12px 0 6px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.12); }
+  .desk { position: relative; height: 360px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 45%, #93c5fd 100%);
+          font-family: "Segoe UI", system-ui, sans-serif; color: #111827; overflow: hidden; }
+  .desk.tall { height: 400px; }
+  .app { position: absolute; left: 4%; top: 7%; width: 70%; height: 72%; background: #fff; border-radius: 8px;
+         box-shadow: 0 10px 30px rgba(0,0,0,.25); overflow: hidden; opacity: .9; }
+  .app .bar { height: 30px; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; padding: 0 10px;
+              font-size: 12px; color: #4b5563; gap: 8px; }
+  .app .body { padding: 14px 18px; font-size: 13px; color: #374151; }
+  .app .body .ln { height: 9px; background: #e5e7eb; border-radius: 4px; margin: 9px 0; }
+  .app .body mark { background: #bfdbfe; padding: 1px 0; }
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: rgba(243,244,246,.92); backdrop-filter: blur(8px);
+             display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; gap: 12px; font-size: 12px; color: #374151; }
+  .trayicon { width: 18px; height: 18px; border-radius: 50%; background: #2563eb; color: #fff; display: grid; place-items: center;
+              font: 700 14px/1 "Segoe UI", sans-serif; }
+  .trayicon.ring { box-shadow: 0 0 0 3px rgba(37,99,235,.35); }
+
+  .qc { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); width: min(640px, 92%); background: #fff;
+        border: 2px solid #2563eb; box-shadow: 0 18px 50px rgba(0,0,0,.35); padding: 12px 18px 12px; }
+  .qc .h { font: 600 13px/1.4 "Segoe UI Semibold", "Segoe UI", sans-serif; color: #2563eb; }
+  .qc .in { font: 19px/1.5 "Segoe UI", sans-serif; color: #111827; margin: 6px 0 8px; min-height: 29px; white-space: nowrap; overflow: hidden; }
+  .qc .in .caret { display: inline-block; width: 1.5px; height: 22px; background: #111827; vertical-align: -4px; animation: blink 1s steps(1) infinite; }
+  .qc .in .tg { color: #2563eb; } .qc .in .dt { color: #b45309; } .qc .in .dl { color: #dc2626; }
+  .qc .hint { font-size: 12px; color: #6b7280; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .toast { position: absolute; right: 12px; bottom: 52px; width: 310px; background: #fff; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.3);
+           padding: 12px 14px; font-size: 13px; color: #111827; display: flex; gap: 10px; }
+  .toast .t { font-weight: 600; } .toast .s { color: #4b5563; font-size: 12px; word-break: break-all; }
+  .menu { position: absolute; right: 22px; bottom: 46px; width: 290px; background: #fff; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.3);
+          padding: 6px 0; font-size: 13px; color: #111827; }
+  .menu div { display: flex; justify-content: space-between; padding: 6px 14px; }
+  .menu div.hl { background: #dbeafe; } .menu div span { color: #6b7280; }
+  .menu hr { border: 0; border-top: 1px solid #e5e7eb; margin: 5px 0; }
+
+  .caption { color: var(--muted); font-size: 13px; margin: 6px 2px 0; }
+  .file { background: var(--code); color: #e2e8f0; border-radius: 10px; padding: 14px 16px; font: 13px/1.6 Consolas, ui-monospace, monospace;
+          overflow-x: auto; margin: 10px 0 0; white-space: pre; }
+  .file .c { color: #94a3b8; } .file .k { color: #93c5fd; } .file .tg { color: #a5b4fc; } .file .f { color: #fcd34d; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } .desk { height: 330px; } .app { width: 88%; } }
+
+  /* live playground */
+  .play { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .play input { width: 100%; font: 17px/1.4 "Segoe UI", system-ui, sans-serif; padding: 10px 12px; border: 2px solid var(--accent);
+                border-radius: 8px; background: var(--card); color: var(--fg); outline: none; }
+  .play .row { display: flex; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
+  .play button { font: 600 13px "Segoe UI", system-ui, sans-serif; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line);
+                 background: var(--card); color: var(--fg); cursor: pointer; }
+  .play button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .play .pv { color: var(--muted); font-size: 13px; margin: 8px 2px 0; min-height: 20px; }
+  .play .pv .warn { color: var(--warn); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .chips button { font-weight: 400; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--card); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>⚡ Quick Capture</h1>
+  <p class="lead">TickTick-style global shortcuts for Windows. Press a key combo in any app, type the task, and press Enter.
+    It goes straight into this vault's <code>00 Inbox/</code> as a normal capture file.
+    It's one PowerShell script in the system tray, so there's nothing to install.</p>
+
+  <div class="keys">
+    <div class="key"><div class="combo"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></div><b>Quick add → Inbox</b><span>Popup over whatever you're doing</span></div>
+    <div class="key"><div class="combo"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></div><b>Add to Today</b><span>Scheduled today, <code>#next</code></span></div>
+    <div class="key"><div class="combo"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd></div><b>Capture clipboard</b><span>Copied text or a link, with no popup</span></div>
+    <div class="key"><div class="combo"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></div><b>Open dashboard</b><span>Starts the local server if needed</span></div>
+  </div>
+
+  <h2>1 · Quick add from anywhere</h2>
+  <figure class="scene" id="shot-quick-add" style="margin:12px 0 0">
+    <div class="desk">
+      <div class="app"><div class="bar">✉ Outlook · Inbox</div>
+        <div class="body"><b>Re: Q4 budget</b><div class="ln" style="width:80%"></div><div class="ln" style="width:65%"></div>
+          <div class="ln" style="width:72%"></div><div class="ln" style="width:40%"></div></div></div>
+      <div class="qc">
+        <div class="h">📥&nbsp; Add to Inbox</div>
+        <div class="in">Send Dana the Q4 budget draft <span class="tg">#computer</span> <span class="dt">!fri</span> <span class="dl">^10-24</span><span class="caret"></span></div>
+        <div class="hint">Inbox &nbsp;·&nbsp; When Fri Oct 16 &nbsp;·&nbsp; Deadline Sat Oct 24 &nbsp;·&nbsp; #computer</div>
+      </div>
+      <div class="taskbar"><span class="trayicon">+</span><span>10:42 AM<br>10/14/2026</span></div>
+    </div>
+  </figure>
+  <p class="caption">Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> while reading an email. The line under the box shows what was understood as you type.
+    <kbd>Enter</kbd> saves, <kbd>Shift</kbd>+<kbd>Enter</kbd> saves and clears the box for the next task, and <kbd>Esc</kbd> cancels.</p>
+  <div class="file"><span class="c"># 00 Inbox/2026-10-14 send-dana-the-q4-budget-draft.md</span>
+<span class="k">---</span>
+type: inbox
+captured: 2026-10-14
+<span class="k">---</span>
+- [ ] Send Dana the Q4 budget draft <span class="tg">#computer</span> <span class="f">[scheduled:: 2026-10-16]</span> <span class="f">[due:: 2026-10-24]</span></div>
+
+  <h2>2 · Straight onto Today</h2>
+  <figure class="scene" id="shot-today" style="margin:12px 0 0">
+    <div class="desk">
+      <div class="app"><div class="bar">🌐 Browser · Docs</div>
+        <div class="body"><div class="ln" style="width:90%"></div><div class="ln" style="width:60%"></div><div class="ln" style="width:75%"></div></div></div>
+      <div class="qc">
+        <div class="h">★&nbsp; Add to Today</div>
+        <div class="in">Call the bank about the transfer <span class="tg">#phone</span><span class="caret"></span></div>
+        <div class="hint">Today &nbsp;·&nbsp; When Wed Oct 14 &nbsp;·&nbsp; #phone #next</div>
+      </div>
+      <div class="taskbar"><span class="trayicon">+</span><span>10:44 AM<br>10/14/2026</span></div>
+    </div>
+  </figure>
+  <p class="caption"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> adds today's date as When and tags it <code>#next</code>, so it shows up in the dashboard's <b>Today</b> list right away.
+    If you don't type a context, it gets <code>#anywhere</code>, the same default the dashboard's New To-Do uses.</p>
+  <div class="file">- [ ] Call the bank about the transfer <span class="tg">#phone #next</span> <span class="f">[scheduled:: 2026-10-14]</span></div>
+
+  <h2>3 · Capture the clipboard, no popup</h2>
+  <div class="two">
+    <figure class="scene" id="shot-clipboard" style="margin:12px 0 0">
+      <div class="desk">
+        <div class="app" style="width:86%"><div class="bar">🌐 Browser</div>
+          <div class="body"><div class="ln" style="width:70%"></div><mark>https://example.com/deep-work-notes</mark><div class="ln" style="width:55%"></div></div></div>
+        <div class="toast"><span class="trayicon">+</span><div><div class="t">Clipboard captured</div>
+          <div class="s">00 Inbox/2026-10-14 example-com-deep-work-notes.md</div></div></div>
+        <div class="taskbar"><span class="trayicon ring">+</span><span>10:46 AM</span></div>
+      </div>
+    </figure>
+    <figure class="scene" id="shot-tray" style="margin:12px 0 0">
+      <div class="desk">
+        <div class="app" style="width:60%"><div class="bar">📝 Notepad</div><div class="body"><div class="ln" style="width:70%"></div></div></div>
+        <div class="menu">
+          <div class="hl">Quick add to Inbox <span>Ctrl+Alt+A</span></div>
+          <div>Add to Today <span>Ctrl+Alt+T</span></div>
+          <div>Capture clipboard <span>Ctrl+Alt+V</span></div>
+          <div>Open dashboard <span>Ctrl+Alt+D</span></div><hr>
+          <div>Open inbox folder</div><div>Edit shortcuts…</div><hr><div>Exit</div>
+        </div>
+        <div class="taskbar"><span class="trayicon ring">+</span><span>10:47 AM</span></div>
+      </div>
+    </figure>
+  </div>
+  <p class="caption">Left: copy something, then press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd>. A short line is saved as a task. A link or a longer snippet is saved as a note for
+    <code>/gtd-process-inbox</code>. Right: right-click the tray icon for the same actions. Left-click it to open the quick-add box.</p>
+
+  <h2>Try the quick-add syntax</h2>
+  <div class="play">
+    <div class="row" role="group" aria-label="Mode">
+      <button type="button" id="m-inbox" aria-pressed="true">📥 Inbox (Ctrl+Alt+A)</button>
+      <button type="button" id="m-today" aria-pressed="false">★ Today (Ctrl+Alt+T)</button>
+    </div>
+    <input id="q" value="Book flights to Lisbon #computer !next-week ^11-01" aria-label="Quick add" autocomplete="off">
+    <div class="pv" id="pv"></div>
+    <div class="file" id="out"></div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <p class="caption">This uses the same rules as the PowerShell script, ported to JavaScript for this page. "Today" is 14 Oct 2026, a Wednesday.</p>
+
+  <h2>Syntax</h2>
+  <div class="wrap"><table>
+    <tr><th>Type</th><th>Becomes</th><th>Examples</th></tr>
+    <tr><td><code>#tag</code></td><td>a tag: a context, a status, <code>#evening</code>, …</td><td><code>#phone</code> <code>#waiting</code> (adds <code>[since:: ]</code>)</td></tr>
+    <tr><td><code>!when</code></td><td><code>[scheduled:: ]</code>, the dashboard's When</td><td><code>!today</code> <code>!tmr</code> <code>!fri</code> <code>!+3</code> <code>!next-week</code> <code>!10-20</code> <code>!2026-12-01</code></td></tr>
+    <tr><td><code>^date</code></td><td><code>[due:: ]</code>, a deadline</td><td><code>^fri</code> <code>^10-31</code></td></tr>
+  </table></div>
+  <p class="caption">A weekday means the next one after today. A month and day that has already passed means next year. A date word the script doesn't recognize stays in the title, and the hint shows a ⚠.</p>
+</main>
+<script>
+(function () {
+  var TODAY = new Date(2026, 9, 14);
+  var WD = { sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6 };
+  var CTX = ["computer","phone","errands","home","office","anywhere","agenda","unknown"];
+  function add(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  function valid(y, m, d) { var x = new Date(y, m - 1, d); return x.getMonth() === m - 1 && x.getDate() === d ? x : null; }
+  function resolve(w) {
+    w = w.toLowerCase(); var m;
+    if (/^(today|tod|tdy)$/.test(w)) return TODAY;
+    if (/^(tomorrow|tmr|tom|tmrw)$/.test(w)) return add(TODAY, 1);
+    if (/^(next-?week|nw)$/.test(w)) { var d = add(TODAY, 1); while (d.getDay() !== 1) d = add(d, 1); return d; }
+    if ((m = /^\+(\d{1,3})d?$/.exec(w))) return add(TODAY, +m[1]);
+    if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(w))) return valid(+m[1], +m[2], +m[3]);
+    if ((m = /^(\d{1,2})[-/](\d{1,2})$/.exec(w))) { var x = valid(TODAY.getFullYear(), +m[1], +m[2]); if (x && x < TODAY) x = valid(x.getFullYear() + 1, +m[1], +m[2]); return x; }
+    if (w in WD) { var y = add(TODAY, 1); while (y.getDay() !== WD[w]) y = add(y, 1); return y; }
+    return null;
+  }
+  function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function nice(d) { return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).replace(",", ""); }
+  function parse(text, mode) {
+    var words = [], tags = [], errs = [], sch = null, due = null;
+    text.trim().split(/\s+/).forEach(function (t) {
+      var m;
+      if (!t) return;
+      if ((m = /^#([\w\/-]+)$/u.exec(t))) { if (tags.indexOf(m[1]) < 0) tags.push(m[1]); }
+      else if ((m = /^!(.+)$/.exec(t))) { var d = resolve(m[1]); if (d) sch = d; else { errs.push("unknown date '" + t + "'"); words.push(t); } }
+      else if ((m = /^\^(.+)$/.exec(t))) { var e = resolve(m[1]); if (e) due = e; else { errs.push("unknown date '" + t + "'"); words.push(t); } }
+      else words.push(t);
+    });
+    if (mode === "today") {
+      if (!sch) sch = TODAY;
+      if (!tags.some(function (t) { return ["next","waiting","someday"].indexOf(t) >= 0; })) tags.push("next");
+      if (!tags.some(function (t) { return CTX.indexOf(t) >= 0; })) tags.push("anywhere");
+    }
+    var title = words.join(" ");
+    var parts = ["- [ ] " + title].concat(tags.map(function (t) { return "#" + t; }));
+    if (sch) parts.push("[scheduled:: " + iso(sch) + "]");
+    if (due) parts.push("[due:: " + iso(due) + "]");
+    if (tags.indexOf("waiting") >= 0) parts.push("[since:: " + iso(TODAY) + "]");
+    return { title: title, tags: tags, sch: sch, due: due, errs: errs, line: parts.join(" ") };
+  }
+  function slug(s) { return (s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "") || "item").slice(0, 40).replace(/-+$/, ""); }
+  function esc(s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+  var mode = "inbox", q = document.getElementById("q");
+  function render() {
+    var p = parse(q.value, mode);
+    var bits = [mode === "today" ? "Today" : "Inbox"];
+    if (p.sch) bits.push("When " + nice(p.sch));
+    if (p.due) bits.push("Deadline " + nice(p.due));
+    if (p.tags.length) bits.push(p.tags.map(function (t) { return "#" + t; }).join(" "));
+    document.getElementById("pv").innerHTML = q.value.trim() ? esc(bits.join("  ·  ")) +
+      (p.errs.length ? ' <span class="warn">· ⚠ ' + esc(p.errs.join(", ")) + "</span>" : "") : "Type a task…";
+    document.getElementById("out").innerHTML = p.title
+      ? '<span class="c"># 00 Inbox/' + iso(TODAY) + " " + esc(slug(p.title)) + '.md</span>\n<span class="k">---</span>\ntype: inbox\ncaptured: ' + iso(TODAY) +
+        '\n<span class="k">---</span>\n' + esc(p.line)
+      : '<span class="c"># nothing to save yet</span>';
+  }
+  function setMode(m) {
+    mode = m;
+    document.getElementById("m-inbox").setAttribute("aria-pressed", m === "inbox");
+    document.getElementById("m-today").setAttribute("aria-pressed", m === "today");
+    render();
+  }
+  document.getElementById("m-inbox").onclick = function () { setMode("inbox"); };
+  document.getElementById("m-today").onclick = function () { setMode("today"); };
+  q.addEventListener("input", render);
+  document.addEventListener("keydown", function (e) {
+    if (e.ctrlKey && e.altKey && (e.key === "a" || e.key === "A")) { e.preventDefault(); setMode("inbox"); q.focus(); q.select(); }
+    if (e.ctrlKey && e.altKey && (e.key === "t" || e.key === "T")) { e.preventDefault(); setMode("today"); q.focus(); q.select(); }
+  });
+  ["Call mom #phone !sun", "Renew passport #errands ^12-01", "Figures from Sam #waiting", "Read the Q3 report !+3", "Pay rent #computer !tmr #evening", "Fix bike !someday-ish"]
+    .forEach(function (ex) {
+      var b = document.createElement("button"); b.type = "button"; b.textContent = ex;
+      b.onclick = function () { q.value = ex; render(); q.focus(); };
+      document.getElementById("chips").appendChild(b);
+    });
+  render();
+})();
+</script>
+</body>
+</html>

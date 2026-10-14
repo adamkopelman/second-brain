@@ -28,3 +28,5 @@ Status: `#next` `#waiting` `#someday`. Fields: `[due:: ]` `[scheduled:: ]` `[sin
 - The session brief is the `gtd-status` skill. Claude Code additionally auto-runs it via a
   `SessionStart` hook (`.claude/settings.json`); other harnesses: run `/gtd-status`.
 - Optional: `gtd-maintain` runs a lightweight vault health pass; schedule it per harness if wanted.
+- Outside any harness: `scripts/quick_capture/` (Windows tray app) adds global shortcuts that write
+  captures to `00 Inbox/` in the same format as `gtd-capture`. See `docs/gtd/quick-capture.md`.
