@@ -168,6 +168,26 @@ def test_process_is_idempotent_skips_done_notes(tmp_path, monkeypatch):
     assert T.process(vault, Path("fake-bin"), Path("fake-model"), None, None) == []
 
 
+def test_main_reports_missing_model_and_leaves_notes_pending(tmp_path, capsys):
+    vault = _mk_vault(tmp_path)
+    (vault / "vendor" / "whisper-cpp").mkdir(parents=True)
+    (vault / "vendor" / "whisper-cpp" / "whisper-cli.exe").write_text("stub")  # no models/ggml-tiny.bin
+    assert T.main([str(vault)]) == 1
+    err = capsys.readouterr().err
+    assert "ggml-tiny.bin" in err
+    assert "download-model" in err
+    note = (vault / "Meetings" / "2026-09-10_10-00-00 Meeting.md").read_text(encoding="utf-8")
+    fm, _ = T.parse_frontmatter(note)
+    assert fm["transcription_status"] == "pending"  # retried once the model is downloaded
+
+
+def test_main_without_pending_meetings_does_not_need_the_model(tmp_path, capsys):
+    (tmp_path / "vendor" / "whisper-cpp").mkdir(parents=True)
+    (tmp_path / "vendor" / "whisper-cpp" / "whisper-cli.exe").write_text("stub")
+    assert T.main([str(tmp_path)]) == 0
+    assert "No pending meeting recordings." in capsys.readouterr().out
+
+
 import platform
 import pytest
 

@@ -207,6 +207,12 @@ def main(argv=None) -> int:
         print(f"error: whisper binary not found at {whisper_bin} "
               "(pass --remote-url to use a remote model instead)", file=sys.stderr)
         return 1
+    if not args.remote_url and not model.is_file() and find_pending(vault):
+        # The model isn't committed (too big for git); leave the notes pending so a re-run picks them up.
+        print(f"error: whisper model not found at {model} - download ggml-tiny.bin with "
+              "vendor/whisper-cpp/download-model.ps1 (or download-model.sh); see "
+              "vendor/whisper-cpp/README.md (or pass --model / --remote-url)", file=sys.stderr)
+        return 1
 
     results = process(vault, whisper_bin, model, args.remote_url, args.api_key)
     if not results:
