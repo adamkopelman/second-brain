@@ -4,9 +4,10 @@ TickTick-style keyboard shortcuts that add a task to this vault from **any** app
 type, and press `Enter`. The task lands in `00 Inbox/` as an ordinary capture (the same format as
 `/gtd-capture` and the dashboard's New To-Do), ready for `/gtd-process-inbox`.
 
-It's one PowerShell script in the system tray (`scripts/quick_capture/`). It runs on the Windows
-PowerShell 5.1 that comes with Windows 10/11, so there's nothing to install, and it doesn't need
-Obsidian or the dashboard server to be running.
+It's one PowerShell script in the system tray (`scripts/quick_capture/`, an optional git submodule —
+[adamkopelman/gtd-quick-capture](https://github.com/adamkopelman/gtd-quick-capture)). It runs on the
+Windows PowerShell 5.1 that comes with Windows 10/11, so there's nothing to install, and it doesn't
+need Obsidian or the dashboard server to be running.
 
 Demo, with pictures and a live syntax playground: open `docs/gtd/quick-capture-demo.html` in a browser.
 
@@ -14,6 +15,8 @@ Demo, with pictures and a live syntax playground: open `docs/gtd/quick-capture-d
 
 ## Setup (Windows)
 
+0. If `scripts\quick_capture\` is empty, check out the submodule (cloning with
+   `--recurse-submodules` already did): `git submodule update --init scripts/quick_capture`.
 1. In File Explorer, open `scripts\quick_capture\` in the vault and double-click **`install.cmd`**.
    This adds *GTD Quick Capture* to your Startup folder, so it starts with Windows, and starts it
    now. A blue **+** icon appears in the tray. Windows may hide it under the `^` arrow; drag it onto

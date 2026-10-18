@@ -20,6 +20,14 @@ Tasks are markdown checkboxes. Contexts: `#computer #phone #errands #home #offic
 Status: `#next` `#waiting` `#someday`. Fields: `[due:: ]` `[scheduled:: ]` `[since:: ]`. Full spec:
 `30 Resources/GTD System.md`.
 
+## Optional components (git submodules)
+Obsidian plugins (`.obsidian/plugins/*`), `vendor/whisper-cpp`, `vendor/outlook-mcp-rs` and
+`scripts/quick_capture` are git submodules, each in its own repo — all optional. Clone with
+`git clone --recurse-submodules`; in an existing clone `git submodule update --init [<path>...]`.
+`git submodule status` marks unchecked-out ones with `-`. After checking out plugins, run `gtd-setup`
+to apply the vault's plugin presets. The Whisper model is not in git:
+`vendor/whisper-cpp/download-model.ps1`. List and upstreams: `README.md` → "Optional components".
+
 ## Harness notes
 - Skills are discovered from `.claude/skills/` by Claude Code, opencode, and Claudian (the Obsidian
   plugin that runs one of those agents in a side panel — the recommended way to use the vault).

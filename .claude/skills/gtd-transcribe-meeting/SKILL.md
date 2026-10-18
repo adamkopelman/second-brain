@@ -21,11 +21,17 @@ to for step 2 — that skill is the one source of truth for how summarization wo
    (`OK (transcribed): <note>` / `FAILED (<reason>): <note>` / "No pending meeting recordings."), then
    summarization results from step 2.
 4. If any note failed transcription, open it — a `> [!fail] Transcription failed: ...` callout was
-   added explaining why (commonly: the `.wav` was moved/deleted, or the vendored
-   `vendor/whisper-cpp/whisper-cli.exe` is missing). Tell the user what it says; don't guess.
+   added explaining why (commonly: the `.wav` was moved/deleted). Tell the user what it says; don't
+   guess.
+5. If step 1 itself exits with an error, nothing was transcribed and the notes are still pending:
+   - `error: whisper model not found …` — the model isn't in git; the user downloads it once with
+     `powershell -ExecutionPolicy Bypass -File vendor\whisper-cpp\download-model.ps1` (~74 MB).
+   - `error: whisper binary not found …` — the `vendor/whisper-cpp` submodule isn't checked out:
+     `git submodule update --init vendor/whisper-cpp`.
+   Tell the user which one; don't download or check out anything without asking.
 
 ## Rules
-- Transcription (step 1) is fully mechanical and must never be fabricated — it's the vendored
+- Transcription (step 1) is fully mechanical and must never be fabricated — it's the local
   `vendor/whisper-cpp/` binary + model doing the work (offline by default; only pass
   `--remote-url <endpoint>`/`--api-key` if the user explicitly wants a remote/OpenAI-compatible
   Whisper API instead, which requires network access).

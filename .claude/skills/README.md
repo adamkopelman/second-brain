@@ -37,3 +37,9 @@ as `/<skill-name>` slash commands.
 Only the `skills/` portion of the upstream project is vendored here (not the
 plugin manifests, hooks, or tests). To update, re-copy the `skills/` directory
 from a newer upstream tag and bump the version/commit recorded above.
+
+Why these are copied rather than a git submodule (unlike the vault's Obsidian
+plugins and binaries): Claude Code, opencode and Claudian discover a skill only
+at `.claude/skills/<name>/SKILL.md`. Upstream keeps them under `skills/` inside
+a larger repository, so a submodule would nest them one level too deep and they
+would not load. They are small text files, unmodified from the commit above.

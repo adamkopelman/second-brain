@@ -97,8 +97,9 @@ Hebrew (or any other layout).
 
 ## Outlook calendar and meeting recording
 
-- The server reads the next 7 days of your calendar through the vendored `outlook-mcp-rs` MCP
-  server (`$OUTLOOK_MCP_BIN`, else `vendor/outlook-mcp-rs/outlook-mcp-rs.exe`), refreshing every
+- The server reads the next 7 days of your calendar through the `outlook-mcp-rs` MCP server
+  (`$OUTLOOK_MCP_BIN`, else `vendor/outlook-mcp-rs/outlook-mcp-rs.exe` from the optional
+  `vendor/outlook-mcp-rs` submodule), refreshing every
   minute in the background. Read-only — it only ever calls `list_events` — and meetings you declined
   are left out. Today lists today's meetings (dimmed once over); Upcoming lists each day's. Needs
   classic Outlook running (see `docs/gtd/outlook.md`); if it isn't reachable, Today says so in one

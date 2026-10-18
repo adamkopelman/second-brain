@@ -15,9 +15,17 @@ notes). No auth/tokens — it uses your signed-in Outlook session.
     # → target/release/outlook-mcp-rs.exe
 
 ## Point the vault at it
-The prebuilt binary is **already vendored** in this repo at `vendor/outlook-mcp-rs/outlook-mcp-rs.exe`
-(you only need to build it yourself to update the version). Set an environment variable to its full
-path (both harness configs read it):
+A prebuilt binary (release v0.3.0) comes with the optional `vendor/outlook-mcp-rs` submodule
+([adamkopelman/outlook-mcp-rs-bin](https://github.com/adamkopelman/outlook-mcp-rs-bin)) at
+`vendor/outlook-mcp-rs/outlook-mcp-rs.exe` — `git submodule update --init vendor/outlook-mcp-rs` if
+you didn't clone with `--recurse-submodules`. You only need to build it yourself (above) or download
+it from the [releases](https://github.com/adamkopelman/outlook-mcp-rs/releases) to get a different
+version. On a day-first Windows locale (e.g. en-IL), v0.3.0's MCP date filters can return the wrong
+range ([issue #1](https://github.com/adamkopelman/outlook-mcp-rs/issues/1), fixed on upstream `main`,
+not yet released) — build `main` and point `OUTLOOK_MCP_BIN` at that `target\release\outlook-mcp-rs.exe`
+instead. The local dashboard already works around it.
+
+Set an environment variable to the binary's full path (both harness configs read it):
 
     setx OUTLOOK_MCP_BIN "%CD%\vendor\outlook-mcp-rs\outlook-mcp-rs.exe"   # from the repo root, Windows
 
