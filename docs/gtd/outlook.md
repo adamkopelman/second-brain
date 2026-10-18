@@ -15,15 +15,23 @@ notes). No auth/tokens — it uses your signed-in Outlook session.
     # → target/release/outlook-mcp-rs.exe
 
 ## Point the vault at it
-A prebuilt binary (release v0.3.0) comes with the optional `vendor/outlook-mcp-rs` submodule
-([adamkopelman/outlook-mcp-rs-bin](https://github.com/adamkopelman/outlook-mcp-rs-bin)) at
-`vendor/outlook-mcp-rs/outlook-mcp-rs.exe` — `git submodule update --init vendor/outlook-mcp-rs` if
-you didn't clone with `--recurse-submodules`. You only need to build it yourself (above) or download
-it from the [releases](https://github.com/adamkopelman/outlook-mcp-rs/releases) to get a different
-version. On a day-first Windows locale (e.g. en-IL), v0.3.0's MCP date filters can return the wrong
-range ([issue #1](https://github.com/adamkopelman/outlook-mcp-rs/issues/1), fixed on upstream `main`,
-not yet released) — build `main` and point `OUTLOOK_MCP_BIN` at that `target\release\outlook-mcp-rs.exe`
-instead. The local dashboard already works around it.
+The binary isn't committed. On Windows, `/gtd-setup` (`python .claude/skills/gtd-setup/apply.py .`)
+downloads the prebuilt release **v0.3.0** from the
+[releases](https://github.com/adamkopelman/outlook-mcp-rs/releases), verifies its SHA-256 and saves
+it as `vendor/outlook-mcp-rs/outlook-mcp-rs.exe` (git-ignored). To fetch it on its own:
+
+    powershell -ExecutionPolicy Bypass -File vendor\outlook-mcp-rs\download-outlook-mcp-rs.ps1 -SetUserEnv
+
+(`-SetUserEnv` also sets `OUTLOOK_MCP_BIN` for you; `-Force` re-downloads over an existing exe;
+offline, it stops with a clear error and installs nothing. `sh vendor/outlook-mcp-rs/download-outlook-mcp-rs.sh`
+does the same from Git Bash.) Setup never overwrites an exe that's already there, so a build of your
+own (above) can live at that path too.
+
+On a day-first Windows locale (e.g. en-IL), v0.3.0's MCP date filters can return the wrong range
+([issue #1](https://github.com/adamkopelman/outlook-mcp-rs/issues/1), fixed on upstream `main` but not
+in any release yet — v0.3.0 is the latest) — build `main` and point `OUTLOOK_MCP_BIN` at that
+`target\release\outlook-mcp-rs.exe` (or copy it over `vendor\outlook-mcp-rs\outlook-mcp-rs.exe`). The
+local dashboard already works around it.
 
 Set an environment variable to the binary's full path (both harness configs read it):
 

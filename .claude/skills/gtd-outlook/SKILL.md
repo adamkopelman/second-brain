@@ -11,7 +11,10 @@ never sends mail or changes calendar events unless the user explicitly asks.
 ## Preconditions
 The `outlook` MCP server must be configured (`.mcp.json` / `opencode.json`) and reachable — that
 means classic Outlook running and signed in on a Windows machine, with `$OUTLOOK_MCP_BIN` set. If
-its tools aren't available, tell the user how to enable it (`docs/gtd/outlook.md`) and stop.
+its tools aren't available, tell the user how to enable it (`docs/gtd/outlook.md`) and stop. The
+binary isn't in git: if `vendor/outlook-mcp-rs/outlook-mcp-rs.exe` is missing, it comes from
+`/gtd-setup` or `vendor/outlook-mcp-rs/download-outlook-mcp-rs.ps1 -SetUserEnv` (downloads the
+GitHub release and sets `OUTLOOK_MCP_BIN`); the harness must be restarted afterwards.
 
 ## Flows
 ### Email → inbox

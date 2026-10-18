@@ -16,3 +16,7 @@ Thumbs.db
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# outlook-mcp-rs.exe is downloaded from its GitHub release by gtd-setup (vendor/outlook-mcp-rs/download-outlook-mcp-rs.ps1)
+vendor/outlook-mcp-rs/*.exe
+vendor/outlook-mcp-rs/*.part

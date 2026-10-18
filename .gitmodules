@@ -22,10 +22,6 @@
 	path = vendor/whisper-cpp
 	url = https://github.com/adamkopelman/whisper-cpp.git
 	branch = main
-[submodule "vendor/outlook-mcp-rs"]
-	path = vendor/outlook-mcp-rs
-	url = https://github.com/adamkopelman/outlook-mcp-rs-bin.git
-	branch = main
 [submodule "scripts/quick_capture"]
 	path = scripts/quick_capture
 	url = https://github.com/adamkopelman/gtd-quick-capture.git

@@ -21,12 +21,13 @@ Status: `#next` `#waiting` `#someday`. Fields: `[due:: ]` `[scheduled:: ]` `[sin
 `30 Resources/GTD System.md`.
 
 ## Optional components (git submodules)
-Obsidian plugins (`.obsidian/plugins/*`), `vendor/whisper-cpp`, `vendor/outlook-mcp-rs` and
-`scripts/quick_capture` are git submodules, each in its own repo — all optional. Clone with
+Obsidian plugins (`.obsidian/plugins/*`), `vendor/whisper-cpp` and `scripts/quick_capture` are git
+submodules, each in its own repo — all optional. Clone with
 `git clone --recurse-submodules`; in an existing clone `git submodule update --init [<path>...]`.
 `git submodule status` marks unchecked-out ones with `-`. After checking out plugins, run `gtd-setup`
-to apply the vault's plugin presets. The Whisper model is not in git:
-`vendor/whisper-cpp/download-model.ps1`. List and upstreams: `README.md` → "Optional components".
+to apply the vault's plugin presets. Not in git, downloaded on demand: the Whisper model
+(`vendor/whisper-cpp/download-model.ps1`) and `outlook-mcp-rs.exe` (gtd-setup on Windows, or
+`vendor/outlook-mcp-rs/download-outlook-mcp-rs.ps1`; then set `OUTLOOK_MCP_BIN` to it). List and upstreams: `README.md` → "Optional components".
 
 ## Harness notes
 - Skills are discovered from `.claude/skills/` by Claude Code, opencode, and Claudian (the Obsidian

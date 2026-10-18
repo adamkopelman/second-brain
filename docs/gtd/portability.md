@@ -25,7 +25,7 @@ directory — so you drive the whole GTD system without leaving Obsidian.
 - This is the recommended day-to-day setup: live `Dashboard.md` and skills in one window.
 
 ## Optional components (git submodules)
-The Obsidian plugins, whisper.cpp, the outlook-mcp-rs binary and Quick Capture are git submodules,
+The Obsidian plugins, whisper.cpp and Quick Capture are git submodules,
 each in its own repository (the list, with upstreams and licenses, is in `README.md` →
 "Optional components"). The skills, scripts, dashboards and notes all live in this repo and work
 without any of them.
@@ -35,7 +35,8 @@ without any of them.
   `git submodule update --init <path> ...` — e.g. `.obsidian/plugins/dataview .obsidian/plugins/quickadd`
   for the live dashboard. A submodule you never initialize stays an empty folder and costs nothing.
 - After checking out plugins, run `/gtd-setup` (or `python .claude/skills/gtd-setup/apply.py .`) to
-  apply the vault's plugin presets.
+  apply the vault's plugin presets. On Windows it also downloads the Outlook MCP server binary from
+  its GitHub release (not a submodule; see `docs/gtd/outlook.md`).
 - Updates: `git pull` then `git submodule update --init --recursive` brings the submodules to the
   commits this repo pins; `git submodule update --remote` moves them to their latest commits.
 
