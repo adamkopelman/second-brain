@@ -1,4 +1,4 @@
-# Obsidian per-machine state (vendored plugins ARE tracked)
+# Obsidian per-machine state
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .obsidian/cache

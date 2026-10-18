@@ -1,0 +1,32 @@
+[submodule ".obsidian/plugins/dataview"]
+	path = .obsidian/plugins/dataview
+	url = https://github.com/adamkopelman/obsidian-dataview-dist.git
+	branch = main
+[submodule ".obsidian/plugins/quickadd"]
+	path = .obsidian/plugins/quickadd
+	url = https://github.com/adamkopelman/obsidian-quickadd-dist.git
+	branch = main
+[submodule ".obsidian/plugins/realclaudian"]
+	path = .obsidian/plugins/realclaudian
+	url = https://github.com/adamkopelman/obsidian-claudian-dist.git
+	branch = main
+[submodule ".obsidian/plugins/smart-second-brain"]
+	path = .obsidian/plugins/smart-second-brain
+	url = https://github.com/adamkopelman/obsidian-smart-second-brain-dist.git
+	branch = main
+[submodule ".obsidian/plugins/record-meeting"]
+	path = .obsidian/plugins/record-meeting
+	url = https://github.com/adamkopelman/obsidian-record-meeting.git
+	branch = main
+[submodule "vendor/whisper-cpp"]
+	path = vendor/whisper-cpp
+	url = https://github.com/adamkopelman/whisper-cpp.git
+	branch = main
+[submodule "vendor/outlook-mcp-rs"]
+	path = vendor/outlook-mcp-rs
+	url = https://github.com/adamkopelman/outlook-mcp-rs-bin.git
+	branch = main
+[submodule "scripts/quick_capture"]
+	path = scripts/quick_capture
+	url = https://github.com/adamkopelman/gtd-quick-capture.git
+	branch = main
