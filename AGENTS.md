@@ -27,7 +27,8 @@ opencode, and any harness that discovers skills in `.claude/skills/`.
 4. **Delegate heavy reading** to subagents (`.claude/agents/`): `vault-scout` lookups,
    `inbox-triage` inbox plan, `meeting-summarizer` one meeting each, `vault-organizer` housekeeping.
 5. **Keep replies short**; don't echo file contents back. One GTD task per session — `/clear` between.
-6. Big vault? `/gtd-organize`. Light model? `python3 scripts/lean_mode.py on` (see `docs/gtd/light-models.md`).
+6. Big vault? `/gtd-organize`. Light model? `python3 scripts/lean_mode.py on`. Still compacting?
+   `python3 scripts/context_report.py` shows what filled the last session (see `docs/gtd/light-models.md`).
 
 ## Conventions
 Tasks are markdown checkboxes. Contexts: `#computer #phone #errands #home #office #anywhere #agenda #unknown`.

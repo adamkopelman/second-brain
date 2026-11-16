@@ -5,15 +5,21 @@ description: Use when the agent keeps compacting, runs out of context, is slow o
 
 # GTD Lean Mode
 
+## Find out first
+`python3 scripts/context_report.py` reads the latest session transcript and shows where the
+message tokens went: tool results by tool and file, the model's text and thinking, Write bodies,
+repeated reads, compactions, and the biggest jumps. Relay its summary and suggestions.
+
 ## Switch
 - Check: `python3 scripts/lean_mode.py status`
 - On: `python3 scripts/lean_mode.py on` (add `--keep-outlook` if the user uses `/gtd-outlook`)
 - Off: `python3 scripts/lean_mode.py off`
 Tell the user to **restart the session** afterwards (skills/settings load at start).
 
-`on` parks the 14 developer skills (Superpowers) that load into every session, writes
-per-machine deny rules and output caps to `.claude/settings.local.json`, and disables the Outlook
-MCP server. Fully reversible; `git status` stays clean.
+`on` parks the 14 developer skills, installs the guard hook (blocks whole-file reads, dumps and
+rewrites of big files), selects the `GTD Lean` output style (short replies), caps tool output and
+the output-token reserve, and disables the Outlook MCP. Options: `--context 256000` (the model's
+real window), `--no-thinking`, `--keep-outlook`, `--no-guard`, `--no-style`. Fully reversible.
 
 ## Then work the lean way (also in AGENTS.md → "Context budget")
 - Answer from `python3 scripts/gtd_query.py <brief|next|waiting|inbox|projects|health|meetings|find|sizes>`
