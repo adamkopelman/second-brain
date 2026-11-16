@@ -13,6 +13,10 @@ Unlike most GTD skills in this vault, this one's entire job IS generation: readi
 writing a summary, and inferring which action items exist and what context they belong to. That is
 expected here — it is not a violation of "never fabricate."
 
+**Low context:** `python3 scripts/gtd_query.py meetings` lists what needs work. Where subagents
+exist, hand each note to the `meeting-summarizer` subagent (one call per meeting) so transcripts
+never enter this conversation; just relay its one-line results.
+
 ## Steps
 1. List every note directly under `Meetings/` (`README.md` excluded) whose frontmatter has
    `transcription_status: done` and `summary_status` not equal to `done`.

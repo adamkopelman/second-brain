@@ -8,6 +8,10 @@ description: Use when the user wants to process, clarify, or empty their GTD inb
 Walk every item in `00 Inbox/` through the GTD clarify workflow until the inbox is empty. Read
 `30 Resources/GTD System.md` first.
 
+**Low-context start:** delegate to the `inbox-triage` subagent — it reads every item and returns a
+one-line-per-item filing plan. Confirm the plan with the user (in batches), then apply it. Without
+subagents: `python3 scripts/gtd_query.py inbox`, then open items one at a time.
+
 ## Process
 Take files in `00 Inbox/` (ignore `README.md`) oldest first. For each, confirm before moving files:
 1. Actionable? No → trash (delete), or reference (move to `30 Resources/` / `20 Areas/`,

@@ -5,8 +5,11 @@ description: Use when the user asks what to work on now, wants their next action
 
 # GTD Next Actions (Engage)
 
-Help the user decide what to do now. Read `30 Resources/GTD System.md`. Read-only unless asked to
-check something off.
+Help the user decide what to do now. Read-only unless asked to check something off.
+
+**Fast path (use this):** `python3 scripts/gtd_query.py next [--ctx phone] [--limit 10]` already
+does steps 1–2 and sorts due-first, each line ending in `file:line`. Don't read project notes; to
+check one off, edit just that line.
 
 ## Steps
 1. Grep open `#next` tasks (unchecked, not `#waiting`) across `00 Inbox/`, `10 Projects/`,

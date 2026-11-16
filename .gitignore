@@ -20,3 +20,8 @@ __pycache__/
 # outlook-mcp-rs.exe is downloaded from its GitHub release by gtd-setup (vendor/outlook-mcp-rs/download-outlook-mcp-rs.ps1)
 vendor/outlook-mcp-rs/*.exe
 vendor/outlook-mcp-rs/*.part
+
+# Lean mode (scripts/lean_mode.py) — per-machine
+.claude/settings.local.json
+.claude/lean-mode.json
+.claude/skills-dev/

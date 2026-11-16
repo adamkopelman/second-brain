@@ -8,6 +8,9 @@ description: Use when the user opens the vault or asks for a status brief / over
 Print a short, read-only brief. Works in any harness (no dependency on hooks). If the shell hook
 `.claude/hooks/gtd-status.sh` exists you may run it for speed; otherwise compute directly.
 
+**Fast path (use this):** `python3 scripts/gtd_query.py brief` prints the whole brief in a few
+lines — relay it and stop. Compute by hand only if the script is missing.
+
 ## Compute
 1. **Inbox:** count files in `00 Inbox/` excluding `README.md`.
 2. **Active projects:** notes in `10 Projects/` whose frontmatter has `status: active`.

@@ -8,6 +8,11 @@ description: Use when the user wants to do their GTD weekly review — the recur
 Guide the user through the review interactively, updating the vault as you go. Full checklist in
 `Weekly Review.md`. Read `30 Resources/GTD System.md`.
 
+**Low context:** don't open every note. Use `python3 scripts/gtd_query.py projects`, `waiting`,
+`health` and `next` for the Get Current pass; open a note only to change it (edit the line, not the
+file). Process the inbox via `/gtd-process-inbox` (it uses the `inbox-triage` subagent). Finish
+with `/gtd-organize` if `gtd_query.py sizes` shows big notes.
+
 ## Process
 ### Get Clear
 - Process `00 Inbox/` to empty (`/gtd-process-inbox`); prompt a brain-dump and process it.

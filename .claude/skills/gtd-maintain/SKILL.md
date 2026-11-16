@@ -8,6 +8,10 @@ description: Use when the user wants a health check of their GTD vault, or to ru
 A read-only audit that surfaces problems and *proposes* fixes (never auto-edits without confirming).
 Read `30 Resources/GTD System.md`. Runs in any harness; can be scheduled (see below).
 
+**Fast path (use this):** `python3 scripts/gtd_query.py health` runs all five checks (plus overdue
+`[due::]`) and prints one line per issue with `file:line`. To also archive finished material, use
+`/gtd-organize`.
+
 ## Checks
 1. **Stuck projects** — `status: active` notes in `10 Projects/` with no open `#next` task.
 2. **Stale waiting-for** — `#waiting` tasks whose `[since:: DATE]` is > 14 days ago.

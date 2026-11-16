@@ -16,6 +16,7 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
 | Meeting recording | 🎙️/💬 ribbon buttons (`record-meeting` plugin) to record a meeting to WAV and transcribe it — fully offline, multilingual `whisper.cpp` (model downloaded once). Summarizing into notes/decisions/action items runs separately in Claude Code (`gtd-summarize-meetings`). See `docs/gtd/meeting-recording.md`. |
 | Home board | `Home.canvas` — a spatial launchpad (Obsidian Canvas) embedding the dashboard + link-cards. |
 | Portable dashboard | `dashboard.html` — self-contained, any browser (`/gtd-dashboard`). |
+| Light models | `/gtd-lean-mode` + `/gtd-organize`, compact query/tidy scripts and four subagents keep the context small for cheap models (DeepSeek Flash, Haiku-class, local). See `docs/gtd/light-models.md`. |
 | Portability | Skills in `.claude/skills/` (Claude Code, opencode, Claudian); MCP in `.mcp.json` + `opencode.json`; see `AGENTS.md`. |
 
 ## Getting started
@@ -40,7 +41,9 @@ Runs in Claude Code, opencode, and any harness that discovers skills. Plain mark
    `docs/gtd/meeting-recording.md`.
 7. (Optional, Windows) Global capture shortcuts: double-click `scripts\quick_capture\install.cmd`, then
    press `Ctrl+Alt+A` anywhere — see `docs/gtd/quick-capture.md`.
-8. Read `30 Resources/GTD System.md` for conventions. Capture with `/gtd-capture`; review weekly
+8. (Optional) Using a light / small-context model? `python3 scripts/lean_mode.py on` — see
+   `docs/gtd/light-models.md`.
+9. Read `30 Resources/GTD System.md` for conventions. Capture with `/gtd-capture`; review weekly
    with `/gtd-weekly-review`.
 
 ## Optional components (git submodules)

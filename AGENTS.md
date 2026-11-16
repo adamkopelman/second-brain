@@ -14,6 +14,20 @@ opencode, and any harness that discovers skills in `.claude/skills/`.
 - `gtd-outlook` — pull email/calendar from the Outlook MCP.
 - `gtd-transcribe-meeting` — transcribe pending meeting recordings (mechanical); on-demand full pipeline.
 - `gtd-summarize-meetings` — summarize transcribed meetings into notes/decisions/action items (Claude Code, real generation; scheduler-safe).
+- `gtd-organize` — housekeeping: archive finished material, move long transcripts out (dry run first).
+- `gtd-lean-mode` — switch to lean mode for light / small-context models.
+
+## Context budget (read this first — keeps light models from compacting)
+1. **Query, don't read.** `python3 scripts/gtd_query.py brief|next|waiting|inbox|projects|health|meetings|find <text>|sizes`
+   answers most questions in a few lines with `file:line` pointers. Use it before any Read/Grep.
+2. **Read narrowly.** Open a note only to change it; read just the lines you need (offset/limit),
+   edit one line rather than rewriting a file. Grep one folder at a time with a result limit.
+3. **Never read** `vendor/`, `.obsidian/`, `docs/superpowers/`, `scripts/`, `40 Archive/` (unless asked),
+   `Meetings/recordings/`, `dashboard.html`. Don't open the developer (Superpowers) skills for GTD work.
+4. **Delegate heavy reading** to subagents (`.claude/agents/`): `vault-scout` lookups,
+   `inbox-triage` inbox plan, `meeting-summarizer` one meeting each, `vault-organizer` housekeeping.
+5. **Keep replies short**; don't echo file contents back. One GTD task per session — `/clear` between.
+6. Big vault? `/gtd-organize`. Light model? `python3 scripts/lean_mode.py on` (see `docs/gtd/light-models.md`).
 
 ## Conventions
 Tasks are markdown checkboxes. Contexts: `#computer #phone #errands #home #office #anywhere #agenda #unknown`.
