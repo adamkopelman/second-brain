@@ -51,3 +51,10 @@ def test_apply_archives_old_meeting(tmp_path, capsys):
     v = _vault(tmp_path)
     T.main(["--vault", str(v), "--apply", "--only", "meetings"])
     assert (v / "40 Archive/Meetings" / f"{OLD} Sync.md").exists()
+
+
+def test_apply_all_steps_archives_meeting_once(tmp_path, capsys):
+    v = _vault(tmp_path)
+    T.main(["--vault", str(v), "--apply"])
+    assert (v / "40 Archive/Meetings" / f"{OLD} Sync.md").exists()
+    assert not (v / "40 Archive/Transcripts").exists()

@@ -118,7 +118,10 @@ def plan(vault: Path, a) -> list[tuple[str, Path, Path | None, str]]:
                 out.append(("journal", p, vault / "40 Archive/Journal" / p.name,
                             f"{(today - d).days}d old, no open tasks"))
     if "transcripts" in a.only:
+        archiving = {src for step, src, dest, _ in out if dest is not None}
         for p in notes(vault, "Meetings"):
+            if p in archiving:  # the whole note is leaving the hot path already
+                continue
             t = p.read_text(encoding="utf-8")
             if fm(t).get("summary_status") != "done":
                 continue
